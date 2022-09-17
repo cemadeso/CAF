@@ -1,4 +1,5 @@
 ﻿using Itinero;
+using Itinero.Algorithms.Networks;
 using Itinero.IO.Osm;
 using Itinero.Osm.Vehicles;
 using Itinero.Profiles;
@@ -27,10 +28,17 @@ internal sealed class Network
 
     public (float time, float distance) Compute(float originX, float originY, float destinationX, float destinationY)
     {
-        var origin = _router.Resolve(_car, originX, originY);
-        var destination = _router.Resolve(_car, destinationX, destinationY);
-        var route = _router.Calculate(_car, origin, destination);
-        return (route.TotalTime, route.TotalDistance);
+        try
+        {
+            var origin = _router.Resolve(_car, originX, originY);
+            var destination = _router.Resolve(_car, destinationX, destinationY);
+            var route = _router.Calculate(_car, origin, destination);
+            return (route.TotalTime, route.TotalDistance);
+        }
+        catch(Exception)
+        {
+            return (-1.0f, -1.0f);
+        }
     }
 
     private static RouterDb GetRouter(FileInfo requestedFile)
@@ -96,6 +104,7 @@ internal sealed class Network
         {
             routerDb.LoadOsmData(stream, Itinero.Osm.Vehicles.Vehicle.Car);
         }
+        routerDb.OptimizeNetwork();
         using (var stream = new FileInfo(requestedFile.FullName + ".db").Open(FileMode.Create))
         {
             routerDb.Serialize(stream);
