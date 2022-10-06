@@ -7,8 +7,8 @@ internal record struct ChunkEntry
     {
         if(Directory.Exists(path))
         {
-            DirectoryInfo dir = new DirectoryInfo(path);
-            foreach(var file in dir.EnumerateFiles("*.csv"))
+            DirectoryInfo dir = new(path);
+            foreach(var file in dir.EnumerateFiles("Chunk*.csv"))
             {
                 foreach (var parts in File.ReadLines(file.FullName)
                     .Skip(1)
