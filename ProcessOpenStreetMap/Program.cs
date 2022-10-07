@@ -28,19 +28,25 @@ void ProcessRoadtimes(string directoryName, int day)
         {
             var device = allDevices[deviceIndex];
             var (cache, records) = (local.Cache, local.Results);
-            records.Add(new ProcessedRecord(deviceIndex, 0, float.NaN, float.NaN, float.NaN));
-            for (int i = 1; i < device.Length; i++)
+
+            void Process(int startingIndex, int currentIndex)
             {
-                var startingPoint = device[i - 1];
-                var entry = device[i];
+                var startingPoint = device[startingIndex];
+                var entry = device[currentIndex];
                 var (time, distance) = network.Compute(startingPoint.Lat, startingPoint.Long, entry.Lat,
                     entry.Long, cache.fastestPath, cache.dirtyBits);
                 if (time < 0)
                 {
                     Interlocked.Increment(ref failedPaths);
                 }
-                records.Add(new ProcessedRecord(deviceIndex, i, time, distance,
+                records.Add(new ProcessedRecord(deviceIndex, currentIndex, time, distance,
                     Network.ComputeDistance(startingPoint.Lat, startingPoint.Long, entry.Lat, entry.Long)));
+            }
+
+            records.Add(new ProcessedRecord(deviceIndex, 0, float.NaN, float.NaN, float.NaN));
+            for (int i = 1; i < device.Length; i++)
+            {
+                Process(i - 1, i);
             }
             var p = Interlocked.Increment(ref processedDevices);
             if (p % 1000 == 0)
