@@ -1,4 +1,5 @@
 ﻿using System.Buffers;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using RTree;
 
@@ -71,6 +72,7 @@ internal sealed class Network
 
     private static List<Node> LoadCachedVersion(FileInfo requestedFile)
     {
+        var watch = Stopwatch.StartNew();
         using var reader = new BinaryReader(File.OpenRead(GetCachedName(requestedFile)));
         var magicNumber = reader.ReadInt64();
         if (magicNumber != 6473891447)
@@ -99,7 +101,9 @@ internal sealed class Network
                 ret[i].Connections.Add(new Link(destination, time));
             }
         }
+        watch.Stop();
         Console.WriteLine($"Number of links {linkSum}");
+        Console.WriteLine($"Network load time = {watch.ElapsedMilliseconds}ms");
         return ret;
     }
 
@@ -175,9 +179,9 @@ internal sealed class Network
         double diffLa = latRad2 - latRad1;
         double doffLo = lonRad2 - lonRad1;
 
-        double computation = Math.Asin(Math.Sqrt(Math.Sin(diffLa / 2) * Math.Sin(diffLa / 2) 
+        double computation = Math.Asin(Math.Sqrt(Math.Sin(diffLa / 2) * Math.Sin(diffLa / 2)
             + Math.Cos(latRad1) * Math.Cos(latRad2) * Math.Sin(doffLo / 2) * Math.Sin(doffLo / 2)));
-        return (float) (2 * earthRadius * computation);
+        return (float)(2 * earthRadius * computation);
     }
 
     public (float time, float distance) Compute(float originX, float originY, float destinationX, float destinationY, int[] cache, bool[] dirtyBits)
