@@ -1,22 +1,25 @@
 ﻿using Amazon.S3;
+using Amazon.S3.Model;
+using Amazon.S3.Model.Internal.MarshallTransformations;
 using System.Threading.Channels;
 
 namespace GatherAWSData;
 
 static internal class AWS
 {
-    public static async Task<string?[]> DownloadData(AWSConfig config, string destinationDirectory, string areaName, int year, int month, int date)
+    public static async Task<string?[]> DownloadData(AWSConfig config, string destinationDirectory, string prefix, string areaName, int year, int month, int date)
     {
         if(!Directory.Exists(destinationDirectory))
         {
             Directory.CreateDirectory(destinationDirectory);
         }
-        var awsNames = CreateAWSDataSourceNames(areaName, year, month, date);
-        string?[] fileNames = CreateFileNames(destinationDirectory, areaName, year, month, date);
-        var cancel = new CancellationToken();
+        string?[] fileNames = Array.Empty<string>();
         using (var client = new AmazonS3Client(config.AwsKey, config.AwsSecret, Amazon.RegionEndpoint.USWest2))
         {
-            for(int i = 0; i < awsNames.Length; i++)
+            var awsNames = await CreateAWSDataSourceNames(config, client, prefix, areaName, year, month, date);
+            fileNames = CreateFileNames(destinationDirectory, awsNames);
+            var cancel = new CancellationToken();
+            for (int i = 0; i < awsNames.Length; i++)
             {
                 try
                 {
@@ -32,32 +35,21 @@ static internal class AWS
         return fileNames;
     }
 
-    private static string[] CreateAWSDataSourceNames(string areaName, int year, int month, int date)
+    private static async Task<string[]> CreateAWSDataSourceNames(AWSConfig config, AmazonS3Client client, string prefix, 
+        string areaName, int year, int month, int date)
     {
-        return new string[]
+        var p = $"{prefix}/{areaName}/{year}/{month:00}/{date:00}";
+        var request = new ListObjectsRequest()
         {
-            $"norm_data/{areaName}/{year}/{month:00}/{date:00}/lotadata_{areaName}_{year}_{month:00}_{date:00}_00000.gz",
-            $"norm_data/{areaName}/{year}/{month:00}/{date:00}/lotadata_{areaName}_{year}_{month:00}_{date:00}_00001.gz",
-            $"norm_data/{areaName}/{year}/{month:00}/{date:00}/lotadata_{areaName}_{year}_{month:00}_{date:00}_00002.gz",
-            $"norm_data/{areaName}/{year}/{month:00}/{date:00}/lotadata_{areaName}_{year}_{month:00}_{date:00}_00003.gz",
-            $"norm_data/{areaName}/{year}/{month:00}/{date:00}/lotadata_{areaName}_{year}_{month:00}_{date:00}_00004.gz",
-            $"norm_data/{areaName}/{year}/{month:00}/{date:00}/lotadata_{areaName}_{year}_{month:00}_{date:00}_10000.gz",
-            $"norm_data/{areaName}/{year}/{month:00}/{date:00}/lotadata_{areaName}_{year}_{month:00}_{date:00}_10001.gz",
+            BucketName = config.BucketName,
+            Prefix = p
         };
+        var namesRequest = await client.ListObjectsAsync(request);
+        return namesRequest.S3Objects.Where(x => !x.Key.Equals(prefix)).Select(x => x.Key).ToArray();
     }
 
-    private static string[] CreateFileNames(string directory, string areaName, int year, int month, int date)
+    private static string[] CreateFileNames(string directory, string[] awsNames)
     {
-        return new string[]
-        {
-
-            Path.Combine(directory, $"lotadata_{areaName}_{year}_{month:00}_{date:00}_00000.gz"),
-            Path.Combine(directory, $"lotadata_{areaName}_{year}_{month:00}_{date:00}_00001.gz"),
-            Path.Combine(directory, $"lotadata_{areaName}_{year}_{month:00}_{date:00}_00002.gz"),
-            Path.Combine(directory, $"lotadata_{areaName}_{year}_{month:00}_{date:00}_00003.gz"),
-            Path.Combine(directory, $"lotadata_{areaName}_{year}_{month:00}_{date:00}_00004.gz"),
-            Path.Combine(directory, $"lotadata_{areaName}_{year}_{month:00}_{date:00}_10000.gz"),
-            Path.Combine(directory, $"lotadata_{areaName}_{year}_{month:00}_{date:00}_10001.gz"),
-        };
+        return awsNames.Select(x => Path.Combine(directory, x.Split('/').Last())).ToArray();
     }
 }

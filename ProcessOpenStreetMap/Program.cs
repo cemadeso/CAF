@@ -5,12 +5,12 @@ using System.Diagnostics;
 using System.Threading;
 using System.Timers;
 
-var rootDirectory = @"Z:\Groups\TMG\Research\2022\CAF\Rio\Days";
+var rootDirectory = @"Z:\Groups\TMG\Research\2022\CAF\Bogota\Days";
 var year = 2019;
 var month = 9;
 
 Console.WriteLine("Loading road network...");
-Network network = new(@"./Rio.osmx");
+Network network = new(@"./bogota.osmx");
 
 void ProcessRoadtimes(string directoryName, int day)
 {

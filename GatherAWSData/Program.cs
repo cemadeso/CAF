@@ -3,16 +3,19 @@ using System.IO.Compression;
 
 var awsConfig = new AWSConfig("awsConfig.txt");
 
-var areaName = "greater_rio_de_janeiro_metropolitan_area_br";
+//var areaName = "greater_rio_de_janeiro_metropolitan_area_br";
+//var prefix = "norm_data";
+var areaName = "greater_bogota_metropolitan_area_co";
+var prefix = "norm_data/co";
 var year = 2019;
 var month = 9;
 
-for(int day = 1; day <= 30; day++)
+for(int day = 1; day <= DateTime.DaysInMonth(year, month); day++)
 {
     Console.WriteLine($"Starting to process day {day}");
     var directory = $"DownloadedFiles/Day{day}";
     Console.WriteLine("Downloading files...");
-    var fileNames = await AWS.DownloadData(awsConfig, directory, areaName, year, month, day);
+    var fileNames = await AWS.DownloadData(awsConfig, directory, prefix, areaName, year, month, day);
     Console.WriteLine("Decompressing files");
     // Decompress the files and update the fileNames
     Parallel.For(0, fileNames.Length, (int i) =>
