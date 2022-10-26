@@ -4,9 +4,9 @@ using System.Runtime.CompilerServices;
 using RTree;
 
 
-namespace ProcessOpenStreetMap;
+namespace RoadNetwork;
 
-internal sealed class Network
+public sealed class Network
 {
     private readonly List<Node> _nodes;
     private readonly Link[] _links;
@@ -75,7 +75,7 @@ internal sealed class Network
         var watch = Stopwatch.StartNew();
         using var reader = new BinaryReader(File.OpenRead(GetCachedName(requestedFile)));
         var magicNumber = reader.ReadInt64();
-        if (magicNumber != 6473891447)
+        if (magicNumber != 6473891448)
         {
             throw new Exception("Invalid Magic Number!");
         }
@@ -87,6 +87,7 @@ internal sealed class Network
         {
             var lat = reader.ReadSingle();
             var lon = reader.ReadSingle();
+            var roadType = (HighwayType)reader.ReadInt32();
             numberOfLinks[i] = reader.ReadInt32();
             ret.Add(new Node(lat, lon, new List<Link>(numberOfLinks[i])));
         }
@@ -98,7 +99,8 @@ internal sealed class Network
                 linkSum++;
                 var destination = reader.ReadInt32();
                 var time = reader.ReadSingle();
-                ret[i].Connections.Add(new Link(destination, time));
+                var roadType = (HighwayType)reader.ReadInt32();
+                ret[i].Connections.Add(new Link(destination, time, roadType));
             }
         }
         watch.Stop();
@@ -109,6 +111,7 @@ internal sealed class Network
 
     private static (int[] nodeOffset, int[] linkCount, Link[]) CreateLinkTable(List<Node> nodes)
     {
+        var linkLookup = new RTree<int>();
         var nodeOffset = new int[nodes.Count];
         var linkCount = new int[nodes.Count];
         var numberOfLinks = nodes.Sum(n => n.Connections.Count);
@@ -131,7 +134,7 @@ internal sealed class Network
     {
         using var writer = new BinaryWriter(File.OpenWrite(GetCachedName(requestedFile)));
         // magic number
-        writer.Write(6473891447L);
+        writer.Write(6473891448L);
         writer.Write(_nodes.Count);
         Console.WriteLine($"Number of nodes {_nodes.Count}");
         for (int i = 0; i < _nodes.Count; i++)
@@ -145,10 +148,11 @@ internal sealed class Network
         {
             for (int j = 0; j < _nodes[i].Connections.Count; j++)
             {
-                numberOfLinks++;
                 writer.Write(_nodes[i].Connections[j].Destination);
                 writer.Write(_nodes[i].Connections[j].Time);
+                writer.Write((int)_nodes[i].Connections[j].RoadType);
             }
+            numberOfLinks += _nodes[i].Connections.Count;
         }
         Console.WriteLine($"Number of links {numberOfLinks}");
     }
@@ -184,7 +188,7 @@ internal sealed class Network
         return (float)(2 * earthRadius * computation);
     }
 
-    public (float time, float distance) Compute(float originX, float originY, float destinationX, float destinationY, int[] cache, bool[] dirtyBits)
+    public (float time, float distance, HighwayType originRoad, HighwayType destinationRoad) Compute(float originX, float originY, float destinationX, float destinationY, int[] cache, bool[] dirtyBits)
     {
         // Find closest origin node in the network
         int originNodeIndex = FindClosestNodeIndex(originX, originY);
@@ -193,17 +197,20 @@ internal sealed class Network
         if (originNodeIndex == destinationNodeIndex)
         {
             // we don't need to clear the cache if we don't use the fastest path algorithm.
-            return (0, 0);
+            return (0, 0, HighwayType.NotRoad, HighwayType.NotRoad);
         }
+
         // Find the fastest route between the two points
         var path = GetFastestPathDijkstra(originNodeIndex, destinationNodeIndex, cache, dirtyBits);
         if (path is null)
         {
-            return (-1, -1);
+            return (-1, -1, HighwayType.NotRoad, HighwayType.NotRoad);
         }
+        
         // Compute the travel time and distance for the fastest path
         var distance = 0.0f;
         var time = 0.0f;
+        var previousDestinationIndex = originNodeIndex;
         for (int i = 0; i < path.Count; i++)
         {
             var origin = _nodes[path[i].origin];
@@ -219,11 +226,36 @@ internal sealed class Network
                 }
             }
         }
+        var (originRoadType, destinationRoadType) = path.Count switch
+        {
+            0 => (HighwayType.NotRoad, HighwayType.NotRoad),
+            1 => GetRoadTypes(originX, originY, originNodeIndex),
+            2 => (_nodes[path[0].origin].Connections.FirstOrDefault(c => c.Destination == destinationNodeIndex).RoadType,
+                    _nodes[path[0].origin].Connections.FirstOrDefault(c => c.Destination == destinationNodeIndex).RoadType),
+            _ => (_nodes[path[0].origin].Connections.FirstOrDefault(c => c.Destination == path[0].destination).RoadType,
+                   _nodes[path[^1].origin].Connections.FirstOrDefault(c => c.Destination == path[^1].destination).RoadType)
+        };
         // figure out the distance to and from the road network
         var distanceToAndFrom = ComputeDistance(originX, originY, _nodes[originNodeIndex].Lat, _nodes[originNodeIndex].Lon)
             + ComputeDistance(_nodes[destinationNodeIndex].Lat, _nodes[destinationNodeIndex].Lon, destinationX, destinationY);
         // Add the time to and from the road network assuming 40km/h
-        return (time + (distanceToAndFrom * 40.0f / 60.0f), distance + distanceToAndFrom);
+        return (time + (distanceToAndFrom * (40.0f / 60.0f)), distance + distanceToAndFrom, originRoadType, destinationRoadType);
+    }
+
+    private (HighwayType originRoadType, HighwayType destinationRoadType) GetRoadTypes(float x, float y, int nodeIndex)
+    {
+        HighwayType ret = HighwayType.NotRoad;
+        float closest = float.PositiveInfinity;
+        foreach(var link in _nodes[nodeIndex].Connections)
+        {
+            var distance = ComputeDistance(x, y, _nodes[link.Destination].Lat, _nodes[link.Destination].Lon);
+            if(distance < closest)
+            {
+                closest = distance;
+                ret = link.RoadType;
+            }
+        }
+        return (ret, ret);
     }
 
     private static void ClearCache(int[] cache, bool[] dirtyBits)
@@ -452,7 +484,7 @@ internal sealed class Network
         return ret;
     }
 
-    internal (int[] fastestPath, bool[] dirtyBits) GetCache()
+    public (int[] fastestPath, bool[] dirtyBits) GetCache()
     {
         var fp = new int[_nodes.Count];
         var dirty = new bool[(int)Math.Ceiling((float)_nodes.Count / CacheChunkSize)];
@@ -476,4 +508,5 @@ internal record struct Node(float Lat, float Lon, List<Link> Connections);
 /// </summary>
 /// <param name="Destination"></param>
 /// <param name="Time"></param>
-internal record struct Link(int Destination, float Time);
+/// <param name="RoadType"></param>
+internal record struct Link(int Destination, float Time, HighwayType RoadType);

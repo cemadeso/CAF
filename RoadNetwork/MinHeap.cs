@@ -1,8 +1,8 @@
-﻿namespace ProcessOpenStreetMap;
+﻿namespace RoadNetwork;
 
-internal sealed class MinHeapAStar
+internal sealed class MinHeap
 {
-    private readonly List<(int Destination, int Origin, float Cost, float CostSoFar)> _data
+    private readonly List<(int Destination, int Origin, float Cost)> _data
         = new();
     private HashSet<int> _contained = new();
 
@@ -14,7 +14,7 @@ internal sealed class MinHeapAStar
         _data.Clear();
     }
 
-    public (int Destination, int Origin, float CostSoFar) PopMin()
+    public (int Destination, int Origin, float Cost) PopMin()
     {
         var tailIndex = _data.Count - 1;
         if (tailIndex < 0)
@@ -62,7 +62,7 @@ internal sealed class MinHeapAStar
         return (top.Destination, top.Origin, top.Cost);
     }
 
-    public void Push(int destination, int origin, float orderedCost, float costSoFar)
+    public void Push(int destination, int origin, float cost)
     {
         int current = _data.Count;
         if (_contained.Contains(destination))
@@ -72,12 +72,11 @@ internal sealed class MinHeapAStar
                 if (_data[current].Destination == destination)
                 {
                     // if we found a better path to this node
-                    if (_data[current].Cost > orderedCost)
+                    if (_data[current].Cost > cost)
                     {
                         var temp = _data[current];
                         temp.Origin = origin;
-                        temp.Cost = orderedCost;
-                        temp.CostSoFar = costSoFar;
+                        temp.Cost = cost;
                         _data[current] = temp;
                         break;
                     }
@@ -92,7 +91,7 @@ internal sealed class MinHeapAStar
         if (current == _data.Count)
         {
             // if it is not already contained
-            _data.Add((destination, origin, orderedCost, costSoFar));
+            _data.Add((destination, origin, cost));
             _contained.Add(destination);
         }
         // we don't need to check the root

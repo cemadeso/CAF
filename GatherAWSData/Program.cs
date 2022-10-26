@@ -5,8 +5,12 @@ var awsConfig = new AWSConfig("awsConfig.txt");
 
 //var areaName = "greater_rio_de_janeiro_metropolitan_area_br";
 //var prefix = "norm_data";
-var areaName = "greater_bogota_metropolitan_area_co";
-var prefix = "norm_data/co";
+//var areaName = "greater_bogota_metropolitan_area_co";
+//var prefix = "norm_data/co";
+// var areaName = "";
+// var prefix = "norm_data/pa";
+var areaName = "greater_buenos_aires_ar";
+var prefix = "norm_data/ar";
 var year = 2019;
 var month = 9;
 

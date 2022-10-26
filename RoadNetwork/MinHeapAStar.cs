@@ -1,8 +1,8 @@
-﻿namespace ProcessOpenStreetMap;
+﻿namespace RoadNetwork;
 
-internal sealed class MinHeap
+internal sealed class MinHeapAStar
 {
-    private readonly List<(int Destination, int Origin, float Cost)> _data
+    private readonly List<(int Destination, int Origin, float Cost, float CostSoFar)> _data
         = new();
     private HashSet<int> _contained = new();
 
@@ -14,7 +14,7 @@ internal sealed class MinHeap
         _data.Clear();
     }
 
-    public (int Destination, int Origin, float Cost) PopMin()
+    public (int Destination, int Origin, float CostSoFar) PopMin()
     {
         var tailIndex = _data.Count - 1;
         if (tailIndex < 0)
@@ -62,7 +62,7 @@ internal sealed class MinHeap
         return (top.Destination, top.Origin, top.Cost);
     }
 
-    public void Push(int destination, int origin, float cost)
+    public void Push(int destination, int origin, float orderedCost, float costSoFar)
     {
         int current = _data.Count;
         if (_contained.Contains(destination))
@@ -72,11 +72,12 @@ internal sealed class MinHeap
                 if (_data[current].Destination == destination)
                 {
                     // if we found a better path to this node
-                    if (_data[current].Cost > cost)
+                    if (_data[current].Cost > orderedCost)
                     {
                         var temp = _data[current];
                         temp.Origin = origin;
-                        temp.Cost = cost;
+                        temp.Cost = orderedCost;
+                        temp.CostSoFar = costSoFar;
                         _data[current] = temp;
                         break;
                     }
@@ -91,7 +92,7 @@ internal sealed class MinHeap
         if (current == _data.Count)
         {
             // if it is not already contained
-            _data.Add((destination, origin, cost));
+            _data.Add((destination, origin, orderedCost, costSoFar));
             _contained.Add(destination);
         }
         // we don't need to check the root

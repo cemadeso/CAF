@@ -5,7 +5,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
 
-namespace ProcessOpenStreetMap;
+namespace RoadNetwork;
 
 internal static class OSMLoader
 {
@@ -60,7 +60,7 @@ internal static class OSMLoader
             var destinationIndex = nodeLookup[second];
             var destination = networkNodes[destinationIndex];
             var time = GetTravelTime(Network.ComputeDistance(origin.Lat, origin.Lon, destination.Lat, destination.Lon), type);
-            origin.Connections.Add(new Link(destinationIndex, time));
+            origin.Connections.Add(new Link(destinationIndex, time, type));
         }
 
         HashSet<long> nodesInWays = new();
@@ -196,19 +196,19 @@ internal static class OSMLoader
     }
 }
 
-enum HighwayType
+public enum HighwayType
 {
     NotRoad = 0,
-    Motorway,
-    MotorwayLink,
-    Trunk,
-    TrunkLink,
-    Primary,
-    PrimaryLink,
-    Secondary,
-    SecondaryLink,
-    Tertiary,
-    TertiaryLink,
-    Residential,
-    Road,
+    Motorway = 1,
+    MotorwayLink = 2,
+    Trunk = 3,
+    TrunkLink = 4,
+    Primary = 5,
+    PrimaryLink = 6,
+    Secondary = 7,
+    SecondaryLink = 8,
+    Tertiary = 9,
+    TertiaryLink = 10,
+    Residential = 11,
+    Road = 12,
 }

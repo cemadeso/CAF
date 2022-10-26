@@ -1,16 +1,23 @@
 ﻿#define PARALLEL
 
 using ProcessOpenStreetMap;
+using RoadNetwork;
 using System.Diagnostics;
 using System.Threading;
 using System.Timers;
 
-var rootDirectory = @"Z:\Groups\TMG\Research\2022\CAF\Bogota\Days";
+//var rootDirectory = @"Z:\Groups\TMG\Research\2022\CAF\Panama\Days";
+//var rootDirectory = @"Z:\Groups\TMG\Research\2022\CAF\Bogota\Days";
+var rootDirectory = @"Z:\Groups\TMG\Research\2022\CAF\BuenosAires\Days";
+//var rootDirectory = @"Z:\Groups\TMG\Research\2022\CAF\Rio\Days";
 var year = 2019;
 var month = 9;
 
 Console.WriteLine("Loading road network...");
-Network network = new(@"./bogota.osmx");
+//Network network = new(@"Z:\Groups\TMG\Research\2022\CAF\Rio\Rio.osmx");
+//Network network = new(@"Z:\Groups\TMG\Research\2022\CAF\Bogota\Bogota.osmx");
+Network network = new(@"Z:\Groups\TMG\Research\2022\CAF\BuenosAires\BuenosAires.osmx");
+//Network network = new(@"Z:\Groups\TMG\Research\2022\CAF\Panama\Panama.osmx");
 
 void ProcessRoadtimes(string directoryName, int day)
 {
@@ -39,7 +46,7 @@ void ProcessRoadtimes(string directoryName, int day)
             {
                 var startingPoint = device[startingIndex];
                 var entry = device[currentIndex];
-                var (time, distance) = network.Compute(startingPoint.Lat, startingPoint.Long, entry.Lat,
+                var (time, distance, originRoadType, destinationRoadType) = network.Compute(startingPoint.Lat, startingPoint.Long, entry.Lat,
                     entry.Long, cache.fastestPath, cache.dirtyBits);
                 if (time < 0)
                 {
@@ -48,11 +55,12 @@ void ProcessRoadtimes(string directoryName, int day)
                 // check to see if we need to add an extra record for the final point before we move
                 if(startingIndex != currentIndex)
                 {
-                    records.Add(new ProcessedRecord(deviceIndex, currentIndex - 1, 0, 0, 0, -1));
+                    records.Add(new ProcessedRecord(deviceIndex, currentIndex - 1, 0, 0, 0, -1, HighwayType.NotRoad, HighwayType.NotRoad));
                 }
-                records.Add(new ProcessedRecord(deviceIndex, currentIndex, time, distance, straightLineDistance, currentIndex - startingIndex + 1));
+                records.Add(new ProcessedRecord(deviceIndex, currentIndex, time, distance, straightLineDistance, currentIndex - startingIndex + 1
+                    , originRoadType, destinationRoadType));
             }
-            records.Add(new ProcessedRecord(deviceIndex, 0, float.NaN, float.NaN, float.NaN, 1));
+            records.Add(new ProcessedRecord(deviceIndex, 0, float.NaN, float.NaN, float.NaN, 1, HighwayType.NotRoad, HighwayType.NotRoad));
             for (int i = 1; i < device.Length; i++)
             {
                 const float distanceThreshold = 0.1f;
@@ -61,7 +69,7 @@ void ProcessRoadtimes(string directoryName, int day)
                 if (straightLineDistance > distanceThreshold)
                 {
                     Process(startingIndex, i, straightLineDistance);
-                    startingIndex = i + 1;
+                    startingIndex = i;
                     currentX = device[i].Lat;
                     currentY = device[i].Long;
                 }
@@ -69,8 +77,8 @@ void ProcessRoadtimes(string directoryName, int day)
                 {
                     // If we are not then update the current X,Y
                     var entries = (float)(i - startingIndex + 1);
-                    currentX = (currentX * (entries - 1) + device[i].Lat / (entries + 1)) / entries;
-                    currentY = (currentY * (entries - 1) + device[i].Long / (entries + 1)) / entries;
+                    currentX = (currentX * (entries - 1) + device[i].Lat) / entries;
+                    currentY = (currentY * (entries - 1) + device[i].Long) / entries;
                 }
             }
             var p = Interlocked.Increment(ref processedDevices);
@@ -96,7 +104,7 @@ void ProcessRoadtimes(string directoryName, int day)
     Console.WriteLine($"Total runtime for entries: {watch.ElapsedMilliseconds}ms");
     Console.WriteLine("Writing Records...");
     using var writer = new StreamWriter(Path.Combine(directoryName, $"ProcessedRoadTimes-Day{day}.csv"));
-    writer.WriteLine("DeviceId,Lat,Long,hAccuracy,TS,TravelTime,RoadDistance,Distance,Pings");
+    writer.WriteLine("DeviceId,Lat,Long,hAccuracy,TS,TravelTime,RoadDistance,Distance,Pings,OriginRoadType,DestinationRoadType");
     foreach (var deviceRecords in processedRecords
         .GroupBy(entry => entry.DeviceIndex, (id, deviceRecords) => (ID: id, Records: deviceRecords.OrderBy(record => record.PingIndex)))
         .OrderBy(dev => dev.ID)
@@ -120,7 +128,11 @@ void ProcessRoadtimes(string directoryName, int day)
             writer.Write(',');
             writer.Write(entry.Distance);
             writer.Write(',');
-            writer.WriteLine(entry.Pings);
+            writer.Write(entry.Pings);
+            writer.Write(',');
+            writer.Write((int)entry.OriginRoadType);
+            writer.Write(',');
+            writer.WriteLine((int)entry.DestinationRoadType);
         }
     }
 }
@@ -136,4 +148,5 @@ for (int i = 1; i <= numberOfDaysInMonth; i++)
 
 Console.WriteLine("Complete");
 
-record ProcessedRecord(int DeviceIndex, int PingIndex, float TravelTime, float RoadDistance, float Distance, int Pings);
+record ProcessedRecord(int DeviceIndex, int PingIndex, float TravelTime, float RoadDistance, float Distance, int Pings,
+    HighwayType OriginRoadType, HighwayType DestinationRoadType);

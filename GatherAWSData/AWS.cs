@@ -38,7 +38,9 @@ static internal class AWS
     private static async Task<string[]> CreateAWSDataSourceNames(AWSConfig config, AmazonS3Client client, string prefix, 
         string areaName, int year, int month, int date)
     {
-        var p = $"{prefix}/{areaName}/{year}/{month:00}/{date:00}";
+        var p = String.IsNullOrEmpty(areaName)  
+            ? $"{prefix}/{year}/{month:00}/{date:00}" 
+            : $"{prefix}/{areaName}/{year}/{month:00}/{date:00}";
         var request = new ListObjectsRequest()
         {
             BucketName = config.BucketName,
