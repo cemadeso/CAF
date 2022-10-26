@@ -87,7 +87,6 @@ public sealed class Network
         {
             var lat = reader.ReadSingle();
             var lon = reader.ReadSingle();
-            var roadType = (HighwayType)reader.ReadInt32();
             numberOfLinks[i] = reader.ReadInt32();
             ret.Add(new Node(lat, lon, new List<Link>(numberOfLinks[i])));
         }
