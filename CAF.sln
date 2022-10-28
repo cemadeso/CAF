@@ -7,9 +7,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProcessOpenStreetMap", "Pro
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "GatherAWSData", "GatherAWSData\GatherAWSData.csproj", "{D93F2632-4509-4973-93E6-1503B3B76FE7}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ComputeTimesBetweenDays", "ComputeTimesBetweenDays\ComputeTimesBetweenDays.csproj", "{B8B490D2-98DA-4F2B-9FC7-89C62BAADEAC}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RoadNetwork", "RoadNetwork\RoadNetwork.csproj", "{C377CE01-E120-437A-9CEA-1AB8FC3622E5}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "RoadNetwork", "RoadNetwork\RoadNetwork.csproj", "{C377CE01-E120-437A-9CEA-1AB8FC3622E5}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -25,10 +23,6 @@ Global
 		{D93F2632-4509-4973-93E6-1503B3B76FE7}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D93F2632-4509-4973-93E6-1503B3B76FE7}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{D93F2632-4509-4973-93E6-1503B3B76FE7}.Release|Any CPU.Build.0 = Release|Any CPU
-		{B8B490D2-98DA-4F2B-9FC7-89C62BAADEAC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{B8B490D2-98DA-4F2B-9FC7-89C62BAADEAC}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{B8B490D2-98DA-4F2B-9FC7-89C62BAADEAC}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{B8B490D2-98DA-4F2B-9FC7-89C62BAADEAC}.Release|Any CPU.Build.0 = Release|Any CPU
 		{C377CE01-E120-437A-9CEA-1AB8FC3622E5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{C377CE01-E120-437A-9CEA-1AB8FC3622E5}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{C377CE01-E120-437A-9CEA-1AB8FC3622E5}.Release|Any CPU.ActiveCfg = Release|Any CPU

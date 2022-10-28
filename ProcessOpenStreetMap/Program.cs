@@ -2,6 +2,7 @@
 
 using ProcessOpenStreetMap;
 using RoadNetwork;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Threading;
 using System.Timers;
@@ -18,6 +19,9 @@ Console.WriteLine("Loading road network...");
 //Network network = new(@"Z:\Groups\TMG\Research\2022\CAF\Bogota\Bogota.osmx");
 Network network = new(@"Z:\Groups\TMG\Research\2022\CAF\BuenosAires\BuenosAires.osmx");
 //Network network = new(@"Z:\Groups\TMG\Research\2022\CAF\Panama\Panama.osmx");
+
+// This dictionary is used to store the last entry that was stored for each device
+ConcurrentDictionary<string, ChunkEntry> lastEntry = new();
 
 void ProcessRoadtimes(string directoryName, int day)
 {
@@ -42,10 +46,8 @@ void ProcessRoadtimes(string directoryName, int day)
             int startingIndex = 0;
             float currentX = device[0].Lat, currentY = device[0].Long;
 
-            void Process(int startingIndex, int currentIndex, float straightLineDistance)
+            void ProcessEntries(ChunkEntry startingPoint, ChunkEntry entry, int currentIndex, float straightLineDistance, int pings)
             {
-                var startingPoint = device[startingIndex];
-                var entry = device[currentIndex];
                 var (time, distance, originRoadType, destinationRoadType) = network.Compute(startingPoint.Lat, startingPoint.Long, entry.Lat,
                     entry.Long, cache.fastestPath, cache.dirtyBits);
                 if (time < 0)
@@ -53,14 +55,32 @@ void ProcessRoadtimes(string directoryName, int day)
                     Interlocked.Increment(ref failedPaths);
                 }
                 // check to see if we need to add an extra record for the final point before we move
-                if(startingIndex != currentIndex)
+                // we need to check to see if the current index is greater than zero to allow for trips
+                // from the previous day.
+                if (startingIndex != currentIndex && currentIndex > 0)
                 {
                     records.Add(new ProcessedRecord(deviceIndex, currentIndex - 1, 0, 0, 0, -1, HighwayType.NotRoad, HighwayType.NotRoad));
                 }
-                records.Add(new ProcessedRecord(deviceIndex, currentIndex, time, distance, straightLineDistance, currentIndex - startingIndex + 1
+                records.Add(new ProcessedRecord(deviceIndex, currentIndex, time, distance, straightLineDistance, pings
                     , originRoadType, destinationRoadType));
             }
-            records.Add(new ProcessedRecord(deviceIndex, 0, float.NaN, float.NaN, float.NaN, 1, HighwayType.NotRoad, HighwayType.NotRoad));
+
+            void Process(int startingIndex, int currentIndex, float straightLineDistance)
+            {
+                var startingPoint = device[startingIndex];
+                var entry = device[currentIndex];
+                ProcessEntries(startingPoint, entry, currentIndex, straightLineDistance, currentIndex - startingIndex + 1);
+            }
+            // Check to see if we have seen this device before.
+            // If we have then use its previous position instead of adding a null record.
+            if (lastEntry.TryGetValue(device[0].DeviceID, out var lastPreviousRecord))
+            {
+                ProcessEntries(lastPreviousRecord, device[0], 0, Network.ComputeDistance(lastPreviousRecord.Lat, lastPreviousRecord.Long, device[0].Lat, device[0].Long), 1);
+            }
+            else
+            {
+                records.Add(new ProcessedRecord(deviceIndex, 0, float.NaN, float.NaN, float.NaN, 1, HighwayType.NotRoad, HighwayType.NotRoad));
+            }
             for (int i = 1; i < device.Length; i++)
             {
                 const float distanceThreshold = 0.1f;
@@ -81,6 +101,8 @@ void ProcessRoadtimes(string directoryName, int day)
                     currentY = (currentY * (entries - 1) + device[i].Long) / entries;
                 }
             }
+            // Store the final record to the previous day's cache
+            lastEntry[device[0].DeviceID] = device[device.Length - 1];
             var p = Interlocked.Increment(ref processedDevices);
             if (p % 1000 == 0)
             {
@@ -88,7 +110,6 @@ void ProcessRoadtimes(string directoryName, int day)
                 Console.Write($"Processing {p} of {allDevices.Length}, Estimated time remaining: " +
                     $"{(ts.Days != 0 ? ts.Days + ":" : "")}{ts.Hours:00}:{ts.Minutes:00}:{ts.Seconds:00}\r");
             }
-
             return (cache, records);
         }
     , (local) =>
