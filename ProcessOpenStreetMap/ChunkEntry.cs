@@ -3,7 +3,7 @@
 namespace ProcessOpenStreetMap;
 
 internal record struct ChunkEntry
-    (string DeviceID, float Lat, float Long, float TS, float HAccuracy)
+    (string DeviceID, float Lat, float Long, long TS, float HAccuracy)
 {
     internal static ChunkEntry[][] LoadOrderedChunks(string directoryName)
     {
@@ -30,7 +30,7 @@ internal record struct ChunkEntry
                 var entry = new ChunkEntry(parts[0],
                     float.Parse(parts[1]),
                     float.Parse(parts[2]),
-                    float.Parse(parts[3]),
+                    long.Parse(parts[3]),
                     float.Parse(parts[4]));
                 if(!chunkAcc[i].TryGetValue(entry.DeviceID, out var list))
                 {

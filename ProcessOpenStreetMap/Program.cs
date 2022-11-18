@@ -46,7 +46,7 @@ void ProcessRoadtimes(string directoryName, int day)
             int startingIndex = 0;
             float currentX = device[0].Lat, currentY = device[0].Long;
 
-            void ProcessEntries(ChunkEntry startingPoint, ChunkEntry entry, int currentIndex, float straightLineDistance, int pings)
+            void ProcessEntries(ChunkEntry startingPoint, ChunkEntry entry, int currentIndex, float straightLineDistance)
             {
                 var (time, distance, originRoadType, destinationRoadType) = network.Compute(startingPoint.Lat, startingPoint.Long, entry.Lat,
                     entry.Long, cache.fastestPath, cache.dirtyBits);
@@ -54,32 +54,24 @@ void ProcessRoadtimes(string directoryName, int day)
                 {
                     Interlocked.Increment(ref failedPaths);
                 }
-                // check to see if we need to add an extra record for the final point before we move
-                // we need to check to see if the current index is greater than zero to allow for trips
-                // from the previous day.
-                if (startingIndex != currentIndex && currentIndex > 0)
-                {
-                    records.Add(new ProcessedRecord(deviceIndex, currentIndex - 1, 0, 0, 0, -1, HighwayType.NotRoad, HighwayType.NotRoad));
-                }
-                records.Add(new ProcessedRecord(deviceIndex, currentIndex, time, distance, straightLineDistance, pings
-                    , originRoadType, destinationRoadType));
+                records.Add(new ProcessedRecord(deviceIndex, currentIndex, currentIndex, time, distance, straightLineDistance, originRoadType, destinationRoadType));
             }
 
             void Process(int startingIndex, int currentIndex, float straightLineDistance)
             {
                 var startingPoint = device[startingIndex];
                 var entry = device[currentIndex];
-                ProcessEntries(startingPoint, entry, currentIndex, straightLineDistance, currentIndex - startingIndex + 1);
+                ProcessEntries(startingPoint, entry, currentIndex, straightLineDistance);
             }
             // Check to see if we have seen this device before.
             // If we have then use its previous position instead of adding a null record.
             if (lastEntry.TryGetValue(device[0].DeviceID, out var lastPreviousRecord))
             {
-                ProcessEntries(lastPreviousRecord, device[0], 0, Network.ComputeDistance(lastPreviousRecord.Lat, lastPreviousRecord.Long, device[0].Lat, device[0].Long), 1);
+                ProcessEntries(lastPreviousRecord, device[0], 0, Network.ComputeDistance(lastPreviousRecord.Lat, lastPreviousRecord.Long, device[0].Lat, device[0].Long));
             }
             else
             {
-                records.Add(new ProcessedRecord(deviceIndex, 0, float.NaN, float.NaN, float.NaN, 1, HighwayType.NotRoad, HighwayType.NotRoad));
+                records.Add(new ProcessedRecord(deviceIndex, 0, 0, float.NaN, float.NaN, float.NaN, HighwayType.NotRoad, HighwayType.NotRoad));
             }
             for (int i = 1; i < device.Length; i++)
             {
@@ -99,10 +91,13 @@ void ProcessRoadtimes(string directoryName, int day)
                     var entries = (float)(i - startingIndex + 1);
                     currentX = (currentX * (entries - 1) + device[i].Lat) / entries;
                     currentY = (currentY * (entries - 1) + device[i].Long) / entries;
+                    // Update where this cluster ends
+                    records[^1] = records[^1] with { EndPingIndex = i };
                 }
             }
+            // You don't need to emit a final record if there was no travel for the final ping.
             // Store the final record to the previous day's cache
-            lastEntry[device[0].DeviceID] = device[device.Length - 1];
+            lastEntry[device[0].DeviceID] = device[^1];
             var p = Interlocked.Increment(ref processedDevices);
             if (p % 1000 == 0)
             {
@@ -125,23 +120,25 @@ void ProcessRoadtimes(string directoryName, int day)
     Console.WriteLine($"Total runtime for entries: {watch.ElapsedMilliseconds}ms");
     Console.WriteLine("Writing Records...");
     using var writer = new StreamWriter(Path.Combine(directoryName, $"ProcessedRoadTimes-Day{day}.csv"));
-    writer.WriteLine("DeviceId,Lat,Long,hAccuracy,TS,TravelTime,RoadDistance,Distance,Pings,OriginRoadType,DestinationRoadType");
+    writer.WriteLine("DeviceId,Lat,Long,hAccuracy,StartTime,EndTime,TravelTime,RoadDistance,Distance,Pings,OriginRoadType,DestinationRoadType");
     foreach (var deviceRecords in processedRecords
-        .GroupBy(entry => entry.DeviceIndex, (id, deviceRecords) => (ID: id, Records: deviceRecords.OrderBy(record => record.PingIndex)))
+        .GroupBy(entry => entry.DeviceIndex, (id, deviceRecords) => (ID: id, Records: deviceRecords.OrderBy(record => record.StartPingIndex)))
         .OrderBy(dev => dev.ID)
         )
     {
         foreach (var entry in deviceRecords.Records)
         {
-            writer.Write(allDevices[entry.DeviceIndex][entry.PingIndex].DeviceID);
+            writer.Write(allDevices[entry.DeviceIndex][entry.StartPingIndex].DeviceID);
             writer.Write(',');
-            writer.Write(allDevices[entry.DeviceIndex][entry.PingIndex].Lat);
+            writer.Write(allDevices[entry.DeviceIndex][entry.StartPingIndex].Lat);
             writer.Write(',');
-            writer.Write(allDevices[entry.DeviceIndex][entry.PingIndex].Long);
+            writer.Write(allDevices[entry.DeviceIndex][entry.StartPingIndex].Long);
             writer.Write(',');
-            writer.Write(allDevices[entry.DeviceIndex][entry.PingIndex].HAccuracy);
+            writer.Write(allDevices[entry.DeviceIndex][entry.StartPingIndex].HAccuracy);
             writer.Write(',');
-            writer.Write(allDevices[entry.DeviceIndex][entry.PingIndex].TS);
+            writer.Write(allDevices[entry.DeviceIndex][entry.StartPingIndex].TS);
+            writer.Write(',');
+            writer.Write(allDevices[entry.DeviceIndex][entry.EndPingIndex].TS);
             writer.Write(',');
             writer.Write(entry.TravelTime);
             writer.Write(',');
@@ -149,7 +146,7 @@ void ProcessRoadtimes(string directoryName, int day)
             writer.Write(',');
             writer.Write(entry.Distance);
             writer.Write(',');
-            writer.Write(entry.Pings);
+            writer.Write(entry.EndPingIndex - entry.StartPingIndex + 1);
             writer.Write(',');
             writer.Write((int)entry.OriginRoadType);
             writer.Write(',');
@@ -169,5 +166,5 @@ for (int i = 1; i <= numberOfDaysInMonth; i++)
 
 Console.WriteLine("Complete");
 
-record ProcessedRecord(int DeviceIndex, int PingIndex, float TravelTime, float RoadDistance, float Distance, int Pings,
+record ProcessedRecord(int DeviceIndex, int StartPingIndex, int EndPingIndex, float TravelTime, float RoadDistance, float Distance,
     HighwayType OriginRoadType, HighwayType DestinationRoadType);
