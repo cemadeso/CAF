@@ -1,24 +1,40 @@
-﻿#define PARALLEL
-
-using ProcessOpenStreetMap;
+﻿using ProcessOpenStreetMap;
 using RoadNetwork;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Threading;
 using System.Timers;
 
-//var rootDirectory = @"Z:\Groups\TMG\Research\2022\CAF\Panama\Days";
-//var rootDirectory = @"Z:\Groups\TMG\Research\2022\CAF\Bogota\Days";
-var rootDirectory = @"Z:\Groups\TMG\Research\2022\CAF\BuenosAires\Days";
-//var rootDirectory = @"Z:\Groups\TMG\Research\2022\CAF\Rio\Days";
+// Get the network file path and the root directory.
+var arguments = Environment.GetCommandLineArgs();
+string rootDirectory;
+string networkFilePath;
+if (arguments == null || arguments.Length <= 0)
+{
+    networkFilePath = @"Z:\Groups\TMG\Research\2022\CAF\Panama\Panama.osmx";
+    rootDirectory = @"Z:\Groups\TMG\Research\2022\CAF\Panama\Day";
+
+}
+else if (arguments.Length == 2)
+{
+    networkFilePath = args[0];
+    rootDirectory = args[1];
+}
+else
+{
+    Console.WriteLine("USAGE: [NetworkFilePath] [RootDirectory]");
+    System.Environment.Exit(0);
+    return;
+}
+
+// 
+
 var year = 2019;
 var month = 9;
 
 Console.WriteLine("Loading road network...");
-//Network network = new(@"Z:\Groups\TMG\Research\2022\CAF\Rio\Rio.osmx");
-//Network network = new(@"Z:\Groups\TMG\Research\2022\CAF\Bogota\Bogota.osmx");
-Network network = new(@"Z:\Groups\TMG\Research\2022\CAF\BuenosAires\BuenosAires.osmx");
-//Network network = new(@"Z:\Groups\TMG\Research\2022\CAF\Panama\Panama.osmx");
+Network network = new(networkFilePath);
+
 
 // This dictionary is used to store the last entry that was stored for each device
 ConcurrentDictionary<string, ChunkEntry> lastEntry = new();
