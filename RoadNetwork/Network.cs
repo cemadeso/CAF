@@ -10,6 +10,9 @@ public sealed class Network
 {
     private readonly List<Node> _nodes;
     private readonly Link[] _links;
+    private readonly float[] _lanes;
+    private readonly float[] _capacity;
+    private readonly float[] _exponent;
     private readonly int[] _nodeOffset;
     private readonly int[] _linkCounts;
     private readonly RTree<int> _nodeLookup;
@@ -36,6 +39,52 @@ public sealed class Network
         Console.WriteLine("Building indexes");
         (_nodeLookup, _nodeOffset, _linkCounts, _links)
             = BuildIndexes(_nodes);
+        // TOOD: Actually load in the links properly
+        _lanes = new float[_links.Length];
+        Array.Fill(_lanes, 1.0f);
+        (_capacity, _exponent)  = ComputeCapacity(_lanes);
+    }
+
+    private (float[] Capacity, float[] Exponent) ComputeCapacity(float[] lanes)
+    {
+        var capacity = new float[_links.Length];
+        var exponent = new float[_links.Length];
+        for (int i = 0; i < capacity.Length; i++)
+        {
+            switch (_links[i].RoadType)
+            {
+                case HighwayType.Motorway:
+                case HighwayType.MotorwayLink:
+                    capacity[i] = 2000.0f;
+                    exponent[i] = 6.0f;
+                    lanes[i] = 4;
+                    break;
+                case HighwayType.Trunk:
+                case HighwayType.TrunkLink:
+                    capacity[i] = 2000.0f;
+                    exponent[i] = 6.0f;
+                    lanes[i] = 3;
+                    break;
+                case HighwayType.Primary:
+                case HighwayType.PrimaryLink:
+                    capacity[i] = 1400.0f;
+                    exponent[i] = 4.0f;
+                    lanes[i] = 2;
+                    break;
+                case HighwayType.Secondary:
+                case HighwayType.SecondaryLink:
+                    capacity[i] = 800.0f;
+                    exponent[i] = 4.0f;
+                    lanes[i] = 2;
+                    break;
+                default:
+                    capacity[i] = 500.0f;
+                    exponent[i] = 4.0f;
+                    lanes[i] = 1;
+                    break;
+            }
+        }
+        return (capacity, exponent);
     }
 
     private static (RTree<int> _nodeLookup, int[] _nodeOffset, int[] _linkCounts, Link[] _links) BuildIndexes(List<Node> nodes)
@@ -46,14 +95,12 @@ public sealed class Network
         Link[]? _links = null;
         Parallel.Invoke(() =>
         {
-
             _nodeLookup = new RTree<int>();
             for (int i = 0; i < nodes.Count; i++)
             {
                 var node = nodes[i];
                 _nodeLookup.Add(new Rectangle(node.Lat, node.Lon, node.Lat, node.Lon, 0, 0), i);
             }
-
         }, () =>
         {
             (_nodeOffset, _linkCounts, _links) = CreateLinkTable(nodes);
@@ -62,6 +109,8 @@ public sealed class Network
     }
 
     public int NodeCount => _nodes.Count;
+
+    public int LinkCount => _links.Length;
 
     private static bool HasCachedVersion(FileInfo requestedFile)
     {
@@ -205,7 +254,7 @@ public sealed class Network
         {
             return (-1, -1, HighwayType.NotRoad, HighwayType.NotRoad);
         }
-        
+
         // Compute the travel time and distance for the fastest path
         var distance = 0.0f;
         var time = 0.0f;
@@ -241,14 +290,69 @@ public sealed class Network
         return (time + (distanceToAndFrom * (40.0f / 60.0f)), distance + distanceToAndFrom, originRoadType, destinationRoadType);
     }
 
+    /// <summary>
+    /// Get the travel time for a given path
+    /// </summary>
+    /// <param name="path">The path in order to get the travel times from.</param>
+    /// <returns>The total travel time for the path.</returns>
+    public float GetTravelTime(List<(int origin, int destination)>? path)
+    {
+        if (path is null) return -1;
+        if (path.Count == 0) return 0f;
+
+        var time = 0.0f;
+        for (int i = 0; i < path.Count; i++)
+        {
+            var origin = _nodes[path[i].origin];
+            int destinationIndex = path[i].destination;
+            for (int j = 0; j < origin.Connections.Count; j++)
+            {
+                if (origin.Connections[j].Destination == destinationIndex)
+                {
+                    time += origin.Connections[j].Time;
+                    break;
+                }
+            }
+        }
+        return time;
+    }
+
+    /// <summary>
+    /// Get the travel time for a given path
+    /// </summary>
+    /// <param name="path">The path in order to get the travel times from.</param>
+    /// <returns>The total travel time for the path.</returns>
+    public float GetTravelTime(List<int>? path)
+    {
+        if (path is null) return -1;
+        if (path.Count == 0) return 0f;
+
+        var time = 0.0f;
+        var origin = _nodes[path[0]];
+        for (int i = 1; i < path.Count; i++)
+        {
+            int destinationIndex = path[i];
+            for (int j = 0; j < origin.Connections.Count; j++)
+            {
+                if (origin.Connections[j].Destination == destinationIndex)
+                {
+                    time += origin.Connections[j].Time;
+                    break;
+                }
+            }
+            origin = _nodes[destinationIndex];
+        }
+        return time;
+    }
+
     private (HighwayType originRoadType, HighwayType destinationRoadType) GetRoadTypes(float x, float y, int nodeIndex)
     {
         HighwayType ret = HighwayType.NotRoad;
         float closest = float.PositiveInfinity;
-        foreach(var link in _nodes[nodeIndex].Connections)
+        foreach (var link in _nodes[nodeIndex].Connections)
         {
             var distance = ComputeDistance(x, y, _nodes[link.Destination].Lat, _nodes[link.Destination].Lon);
-            if(distance < closest)
+            if (distance < closest)
             {
                 closest = distance;
                 ret = link.RoadType;
@@ -346,7 +450,7 @@ public sealed class Network
                 {
                     return GeneratePath(fastestParent, destinationNodeIndex);
                 }
-                // foreach (var childDestination in links)
+                
                 var nodeOffset = no[Destination];
                 for (int i = 0; i < lc[Destination]; i++)
                 {
@@ -362,91 +466,6 @@ public sealed class Network
                     }
                 }
             }
-        }
-        return null;
-    }
-
-    /// <summary>
-    /// Thread-safe on a static network
-    /// </summary>
-    /// <param name="originNodeIndex"></param>
-    /// <param name="destinationNodeIndex"></param>
-    /// <returns></returns>
-    public unsafe List<(int origin, int destination)>? GetFastestPathAStar(int originNodeIndex, int destinationNodeIndex, int[] fastestParent, bool[] dirtyBits)
-    {
-        if (originNodeIndex == destinationNodeIndex)
-        {
-            return new();
-        }
-        ClearCache(fastestParent, dirtyBits);
-        MinHeapAStar toExplore = new();
-        var finalDestLat = _nodes[destinationNodeIndex].Lat;
-        var finalDestLon = _nodes[destinationNodeIndex].Lon;
-        var distancesRented = ArrayPool<float>.Shared.Rent(_nodes.Count);
-        Array.Clear(distancesRented);
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
-        float GetDistance(float* distances, int originIndex)
-        {
-            if (distances[originIndex] <= 0)
-            {
-                distances[originIndex] = ComputeDistance(_nodes[originIndex].Lat, _nodes[originIndex].Lon, finalDestLat, finalDestLon);
-            }
-            return distances[originIndex];
-        }
-        try
-        {
-            fixed (int* fp = fastestParent)
-            fixed (bool* db = dirtyBits)
-            fixed (int* no = _nodeOffset)
-            fixed (int* lc = _linkCounts)
-            fixed (Link* l = _links)
-            fixed (float* distances = distancesRented)
-            {
-                fp[originNodeIndex] = originNodeIndex;
-                db[originNodeIndex / CacheChunkSize] = true;
-                foreach (var link in _nodes[originNodeIndex].Connections)
-                {
-                    toExplore.Push(link.Destination, originNodeIndex, link.Time + GetDistance(distances, link.Destination), link.Time);
-                }
-                while (toExplore.Count > 0)
-                {
-                    var (Destination, Origin, CostSoFar) = toExplore.PopMin();
-                    // don't explore things that we have already done
-                    if (fp[Destination] != -1)
-                    {
-                        continue;
-                    }
-                    fp[Destination] = Origin;
-                    db[Destination / CacheChunkSize] = true;
-                    // check to see if we have hit our destination
-                    if (Destination == destinationNodeIndex)
-                    {
-                        return GeneratePath(fastestParent, destinationNodeIndex);
-                    }
-                    // foreach (var childDestination in links)
-                    var nodeOffset = no[Destination];
-                    for (int i = 0; i < lc[Destination]; i++)
-                    {
-                        // explore everything that hasn't been solved, the min heap will update if it is a faster path to the child node
-                        if (fp[l[nodeOffset + i].Destination] == -1)
-                        {
-                            // make sure cars are allowed on the link
-                            var linkCost = l[nodeOffset + i].Time;
-                            if (linkCost >= 0)
-                            {
-                                toExplore.Push(l[nodeOffset + i].Destination, Destination,
-                                    CostSoFar + linkCost + GetDistance(distances, l[nodeOffset + i].Destination),
-                                    CostSoFar + linkCost);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        finally
-        {
-            ArrayPool<float>.Shared.Return(distancesRented, false);
         }
         return null;
     }
@@ -490,6 +509,39 @@ public sealed class Network
         Array.Fill(fp, -1);
         Array.Fill(dirty, false);
         return (fp, dirty);
+    }
+
+    /// <summary>
+    /// Modify the link travel times to the given values
+    /// </summary>
+    /// <param name="volumes">The new travel times, the length of this array must be the same size as the number of links.</param>
+    public void UpdateLinkTravelTimes(float[] volumes, float[] freeFlowTime)
+    {
+        if (volumes.Length != _links.Length)
+        {
+            throw new ArgumentOutOfRangeException(nameof(volumes), "The size of the times must be the same as the number of links in the network.");
+        }
+        for (int i = 0; i < volumes.Length; i++)
+        {
+            // (length*60/ul2)*((1+put((volau+volad+el1)/(lanes*ul3))^6)*(get(1).le.1)+(6*get(1)-4)*(get(1).gt.1))
+            var ratio = volumes[i] / (_capacity[i] * _lanes[i]);
+            _links[i].Time =
+                freeFlowTime[i] * (ratio <= 1 ? (1.0f + MathF.Pow(ratio * _lanes[i], _exponent[i])) : (_exponent[i] * ratio - (_exponent[i] - 2.0f)));
+        }
+    }
+
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <returns></returns>
+    public float[] GetTimes()
+    {
+        return _links.Select(link => link.Time).ToArray();
+    }
+
+    public void SaveNetwork(string outputNetworkFile)
+    {
+        //throw new NotImplementedException();
     }
 }
 
