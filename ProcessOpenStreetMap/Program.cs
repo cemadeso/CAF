@@ -12,7 +12,7 @@ string networkFilePath;
 
 if (arguments == null || arguments.Length <= 1)
 {
-    networkFilePath = @"Z:\Groups\TMG\Research\2022\CAF\Bogota\bogota.osmx";
+    networkFilePath = @"Z:\Groups\TMG\Research\2022\CAF\Bogota\Bogota.osmx";
     rootDirectory = @"Z:\Groups\TMG\Research\2022\CAF\Bogota\Days";
 
 }
@@ -36,9 +36,7 @@ var month = 9;
 Console.WriteLine("Loading road network...");
 Network network = new(networkFilePath);
 
-
-// This dictionary is used to store the last entry that was stored for each device
-ConcurrentDictionary<string, LastRecord> lastRecord = new();
+ConcurrentDictionary<string, List<ProcessedRecord>> records = new();
 
 void ProcessRoadtimes(string directoryName, int day, bool isTheLastDay)
 {
@@ -46,174 +44,105 @@ void ProcessRoadtimes(string directoryName, int day, bool isTheLastDay)
     var allDevices = ChunkEntry.LoadOrderedChunks(directoryName);
     Console.WriteLine("Finished loading Entries...");
     int processedDevices = 0;
-    int failedPaths = 0;
     Console.WriteLine("Starting to process entries.");
     var watch = Stopwatch.StartNew();
     var totalEntries = allDevices.Sum(dev => dev.Length);
     List<ProcessedRecord> processedRecords = new(totalEntries);
     Parallel.ForEach(Enumerable.Range(0, allDevices.Length),
-        () =>
-        {
-            return (Cache: network.GetCache(), Results: new List<ProcessedRecord>(totalEntries / System.Environment.ProcessorCount));
-        },
-        (deviceIndex, _, local) =>
+        (deviceIndex, _, cache) =>
         {
             var device = allDevices[deviceIndex];
-            var (cache, records) = (local.Cache, local.Results);
-            void ProcessEntries(ChunkEntry startingPoint, ChunkEntry entry, int currentIndex, float straightLineDistance)
+            static ProcessedRecord CreateRecord(ChunkEntry entry)
             {
-                records.Add(new ProcessedRecord(entry.DeviceID, startingPoint.Lat, startingPoint.Long, startingPoint.HAccuracy,
-                    entry.TS, entry.TS, float.NaN, float.NaN, straightLineDistance, HighwayType.NotRoad, HighwayType.NotRoad, 1));
-            }
-            void Process(int startingIndex, int currentIndex, float straightLineDistance)
-            {
-                var startingPoint = device[startingIndex];
-                var entry = device[currentIndex];
-                ProcessEntries(startingPoint, entry, currentIndex, straightLineDistance);
+                return new ProcessedRecord(entry.DeviceID, entry.Lat, entry.Long, entry.HAccuracy, entry.TS, entry.TS,
+                    float.NaN, float.NaN, float.NaN, HighwayType.NotRoad, HighwayType.NotRoad, 1);
             }
 
-            var prevX = device[0].Lat;
-            var prevY = device[0].Long;
-            float currentX = device[0].Lat, currentY = device[0].Long;
-            var prevClusterSize = 1;
-            var clusterSize = 1;
+            int firstIndex;
+            List<ProcessedRecord>? processedRecords;
+            ProcessedRecord current;
 
-            int startingIndex = 0;
-            var prevStartIndex = 0;
-            var firstIndex = 0;
-
-            // Check to see if we have seen this device before.
-            // If we have then use its previous position instead of adding a null record.
-            if (lastRecord.TryRemove(device[0].DeviceID, out var lastPreviousRecord))
+            void PopPreviousToCurrent()
             {
-                clusterSize = prevClusterSize = lastPreviousRecord.ClusterSize;
-                currentX = prevX = lastPreviousRecord.CurrentX;
-                currentY = prevY = lastPreviousRecord.CurrentY;
-                // Make sure that the first entry that we process happens after the previous entry
-                firstIndex = 0;
-                while (firstIndex < device.Length && lastPreviousRecord.PreviousRecord.EndTS > device[firstIndex].TS)
-                {
-                    firstIndex++;
-                }
-                // If all of the entries happen after, punt this to the next day and skip the device
-                if (firstIndex == device.Length)
-                {
-                    lastRecord[device[0].DeviceID] = lastPreviousRecord;
-                    return (Cache: cache, Results: records);
-                }
-                records.Add(lastPreviousRecord.PreviousRecord with { DeviceID = device[0].DeviceID });
+                current = processedRecords![^1];
+                processedRecords.RemoveAt(processedRecords.Count - 1);
+            }
+
+            // Get the device's previous records, if no entry exists create one
+            if (!records.TryGetValue(device[0].DeviceID, out processedRecords))
+            {
+                records[device[0].DeviceID] = processedRecords = new List<ProcessedRecord>();
+                firstIndex = 1;
+                current = CreateRecord(device[0]);
             }
             else
             {
-                records.Add(new ProcessedRecord(device[0].DeviceID, device[0].Lat, device[0].Long, device[0].HAccuracy, device[0].TS, device[0].TS,
-                    float.NaN, float.NaN, float.NaN, HighwayType.NotRoad, HighwayType.NotRoad, 1));
-                firstIndex = 1;
+                // If we have previous records, pop the last one off the stack and continue
+                PopPreviousToCurrent();
+                firstIndex = 0;
             }
 
-            var startRecordIndex = records.Count;
+            void UpdateCurrent(ChunkEntry entry)
+            {
+                var entries = current.NumberOfPings;
+                var y = ((current.Lat * (entries - 1)) + entry.Lat) / entries;
+                var x = ((current.Long * (entries - 1)) + entry.Long) / entries;
+                current = current with
+                {
+                    Lat = y,
+                    Long = x,
+                    EndTS = entry.TS,
+                    NumberOfPings = current.NumberOfPings + 1,
+                };
+            }
+
+            const float distanceThreshold = 0.1f;
             for (int i = firstIndex; i < device.Length; i++)
             {
-                const float distanceThreshold = 0.1f;
-                var straightLineDistance = Network.ComputeDistance(currentX, currentY, device[i].Lat, device[i].Long);
-                var deltaTime = ComputeDuration(records[^1].StartTS, device[i].TS);
+                var straightLineDistance = Network.ComputeDistance(current.Lat, current.Long, device[i].Lat, device[i].Long);
+                var deltaTime = ComputeDuration(current.EndTS, device[i].TS);
                 var speed = straightLineDistance / deltaTime;
                 // Sanity check the record
                 if (speed > 120.0f)
                 {
                     continue;
                 }
-                bool recordGenerated = false;
                 // If we are in a "new location" add an entry.
                 if (straightLineDistance > distanceThreshold)
                 {
                     // Check the stay duration if greater than 15 minutes
-                    if (ComputeDuration(records[^1].StartTS, records[^1].EndTS) < 0.25f)
+                    if (ComputeDuration(current.StartTS, current.EndTS) < 0.25f)
                     {
-                        if (startingIndex != 0)
+                        // If the record was not long enough, pop back to the previous good entry
+                        if (processedRecords.Count > 0
+                            && Network.ComputeDistance(processedRecords[^1].Lat, processedRecords[^1].Long, device[i].Lat, device[i].Long) <= distanceThreshold)
                         {
-                            records.RemoveAt(records.Count - 1);
-                            startingIndex = prevStartIndex;
-
-                            // Check to see if we jumped back to the previous good cluster.
-                            if (Network.ComputeDistance(prevX, prevY, device[i].Lat, device[i].Long) > distanceThreshold)
-                            {
-                                // The jump from the last good cluster to this point is also large enough for a new record
-                                Process(startingIndex, i, straightLineDistance);
-                                recordGenerated = true;
-                                startingIndex = i;
-                                currentX = device[i].Lat;
-                                currentY = device[i].Long;
-                                clusterSize = 1;
-                            }
-                            else
-                            {
-                                // The jump isn't large enough so we should continue the previous good cluster
-                                currentX = prevX;
-                                currentY = prevY;
-                                clusterSize = prevClusterSize;
-                            }
+                            // If this ping is close enough to the previously good entry, update it
+                            PopPreviousToCurrent();
+                            UpdateCurrent(device[i]);
+                        }
+                        else
+                        {
+                            // If there is no previous record to fall back to, or we are too far away from the previous one, use this entry
+                            current = CreateRecord(device[i]);
                         }
                     }
                     else
                     {
-                        // If the previous was good cluster
-                        prevStartIndex = startingIndex;
-                        Process(startingIndex, i, straightLineDistance);
-                        recordGenerated = true;
-                        startingIndex = i;
-                        // Store the prev state since we know this cluster was good.
-                        prevX = currentX;
-                        prevY = currentY;
-                        prevClusterSize = clusterSize;
-
-                        currentX = device[i].Lat;
-                        currentY = device[i].Long;
-                        clusterSize = 1;
+                        // If the current record is long enough add it as a good record
+                        processedRecords.Add(current);
+                        current = CreateRecord(device[i]);
                     }
                 }
-                if (!recordGenerated)
+                else
                 {
-                    // If we are not then update the current X,Y
-                    var entries = (float)(clusterSize);
-                    currentX = (currentX * (entries - 1) + device[i].Lat) / entries;
-                    currentY = (currentY * (entries - 1) + device[i].Long) / entries;
-                    // Update where this cluster ends
-                    clusterSize++;
-                    records[^1] = records[^1] with { Lat = currentX, Long = currentY, EndTS = device[i].TS, NumberOfPings = clusterSize };
+                    // If the distance was small enough add it to the cluster
+                    UpdateCurrent(device[i]);
                 }
             }
 
-            // Now that we have all of the records we can start generating the travel episodes between them
-            for (int i = startRecordIndex; i < records.Count; i++)
-            {
-                var (time, distance, originRoadType, destinationRoadType) = network.Compute(records[i - 1].Lat, records[i - 1].Long,
-                    records[i].Lat, records[i].Long, cache.fastestPath, cache.dirtyBits);
-                if (time < 0)
-                {
-                    Interlocked.Increment(ref failedPaths);
-                }
-                records[i] = records[i] with
-                {
-                    TravelTime = time,
-                    RoadDistance = distance,
-                    OriginRoadType = originRoadType,
-                    DestinationRoadType = destinationRoadType
-                };
-            }
-
-            // Store the last record for the device and remove it from the queue
-            // if this is not the last day.
-            // We need to do this after computing the travel times just in case the device has no record
-            // for the final day.
-            if (!isTheLastDay)
-            {
-                lastRecord[device[0].DeviceID] = new LastRecord(records[^1], currentX, currentY, clusterSize);
-            }
-
-            if (ComputeDuration(records[^1].StartTS, records[^1].EndTS) < 0.25f)
-            {
-                records.RemoveAt(records.Count - 1);
-            }
+            // Add the currently processed entry back onto the stack of things so it is available for a future day
+            processedRecords.Add(current);
 
             var p = Interlocked.Increment(ref processedDevices);
             if (p % 1000 == 0)
@@ -222,75 +151,10 @@ void ProcessRoadtimes(string directoryName, int day, bool isTheLastDay)
                 Console.Write($"Processing {p} of {allDevices.Length}, Estimated time remaining: " +
                     $"{(ts.Days != 0 ? ts.Days + ":" : "")}{ts.Hours:00}:{ts.Minutes:00}:{ts.Seconds:00}\r");
             }
-
-            return (Cache: cache, Results: records);
-        }
-    , (local) =>
-        {
-            lock (processedRecords)
-            {
-                processedRecords.AddRange(local.Results);
-            }
         }
     );
     watch.Stop();
-    Console.WriteLine($"\n{failedPaths} were unable to be computed.");
-    Console.WriteLine($"Total runtime for entries: {watch.ElapsedMilliseconds}ms");
-    Console.WriteLine("Writing Records...");
-
-    // If this is the last day we need to write out the remaining valid clusters which did not have a record in the final day.
-    if (isTheLastDay)
-    {
-        foreach (var key in lastRecord.Keys.ToArray())
-        {
-            var entry = lastRecord[key];
-            var record = entry.PreviousRecord;
-            // If the last entry is long enough to count as a stay
-            if (ComputeDuration(record.StartTS, record.EndTS) >= 0.25f)
-            {
-                processedRecords.Add(record);
-            }
-        }
-    }
-
-    var path = Path.Combine(rootDirectory, $"ProcessedRoadTimes.csv");
-    using var writer = new StreamWriter(path, day != 1);
-    if (day == 1)
-    {
-        writer.WriteLine("DeviceId,Lat,Long,hAccuracy,StartTime,EndTime,TravelTime,RoadDistance,Distance,Pings,OriginRoadType,DestinationRoadType");
-    }
-    foreach (var deviceRecords in processedRecords
-        .GroupBy(entry => entry.DeviceID, (id, deviceRecords) => (ID: id, Records: deviceRecords.OrderBy(record => record.StartTS)))
-        .OrderBy(dev => dev.ID)
-        )
-    {
-        foreach (var entry in deviceRecords.Records)
-        {
-            writer.Write(entry.DeviceID);
-            writer.Write(',');
-            writer.Write(entry.Lat);
-            writer.Write(',');
-            writer.Write(entry.Long);
-            writer.Write(',');
-            writer.Write(entry.HAccuracy);
-            writer.Write(',');
-            writer.Write(entry.StartTS);
-            writer.Write(',');
-            writer.Write(entry.EndTS);
-            writer.Write(',');
-            writer.Write(entry.TravelTime);
-            writer.Write(',');
-            writer.Write(entry.RoadDistance);
-            writer.Write(',');
-            writer.Write(entry.Distance);
-            writer.Write(',');
-            writer.Write(entry.NumberOfPings);
-            writer.Write(',');
-            writer.Write((int)entry.OriginRoadType);
-            writer.Write(',');
-            writer.WriteLine((int)entry.DestinationRoadType);
-        }
-    }
+    Console.WriteLine($"\nTotal runtime for entries: {watch.ElapsedMilliseconds}ms");
 }
 
 var numberOfDaysInMonth = DateTime.DaysInMonth(year, month);
@@ -302,6 +166,80 @@ for (int i = 1; i <= numberOfDaysInMonth; i++)
     ProcessRoadtimes(directory, i, i == numberOfDaysInMonth);
 }
 
+Console.WriteLine("Computing distances and travel");
+
+Parallel.ForEach(records.Values, () =>
+    {
+        return network.GetCache();
+    },
+    (List<ProcessedRecord> entries, ParallelLoopState _, (int[] fastestPath, bool[] dirtyBits) cache) =>
+    {
+        if (entries.Count == 0)
+        {
+            return cache;
+        }
+        // Test to make sure the last entry is long enough
+        if (ComputeDuration(entries[^1].StartTS, entries[^1].EndTS) < 0.25f)
+        {
+            // If the entry is under 15 minutes, then remove it before processing times
+            entries.RemoveAt(entries.Count - 1);
+        }
+        for (int i = 1; i < entries.Count; i++)
+        {
+            var (time, distance, originRoadType, destinationRoadType) = network.Compute(entries[i - 1].Lat, entries[i - 1].Long,
+                        entries[i].Lat, entries[i].Long, cache.fastestPath, cache.dirtyBits);
+            var straightLine = Network.ComputeDistance(entries[i - 1].Lat, entries[i - 1].Long,
+                entries[i].Lat, entries[i].Long);
+            entries[i] = entries[i] with
+            {
+                TravelTime = time,
+                RoadDistance = distance,
+                OriginRoadType = originRoadType,
+                DestinationRoadType = destinationRoadType,
+                Distance = straightLine,
+            };
+        }
+        return cache;
+    },
+    (_) => { } // do nothing
+);
+
+Console.WriteLine("Writing results to file");
+
+using var writer = new StreamWriter(Path.Combine(rootDirectory, $"ProcessedRoadTimes.csv"));
+writer.WriteLine("DeviceId,Lat,Long,hAccuracy,StartTime,EndTime,TravelTime,RoadDistance,Distance,Pings,OriginRoadType,DestinationRoadType");
+foreach (var device in records
+        .OrderBy(dev => dev.Key)
+    )
+{
+    foreach (var entry in device.Value)
+    {
+        writer.Write(entry.DeviceID);
+        writer.Write(',');
+        writer.Write(entry.Lat);
+        writer.Write(',');
+        writer.Write(entry.Long);
+        writer.Write(',');
+        writer.Write(entry.HAccuracy);
+        writer.Write(',');
+        writer.Write(entry.StartTS);
+        writer.Write(',');
+        writer.Write(entry.EndTS);
+        writer.Write(',');
+        writer.Write(entry.TravelTime);
+        writer.Write(',');
+        writer.Write(entry.RoadDistance);
+        writer.Write(',');
+        writer.Write(entry.Distance);
+        writer.Write(',');
+        writer.Write(entry.NumberOfPings);
+        writer.Write(',');
+        writer.Write((int)entry.OriginRoadType);
+        writer.Write(',');
+        writer.WriteLine((int)entry.DestinationRoadType);
+    }
+}
+
 Console.WriteLine("Complete");
 
 static float ComputeDuration(long startTS, long endTS)
@@ -309,7 +247,5 @@ static float ComputeDuration(long startTS, long endTS)
     return (endTS - startTS) / 3600.0f;
 }
 
-record ProcessedRecord(string DeviceID, float Lat, float Long, float HAccuracy, long StartTS, long EndTS, float TravelTime, float RoadDistance, float Distance,
-    HighwayType OriginRoadType, HighwayType DestinationRoadType, int NumberOfPings);
-
-record LastRecord(ProcessedRecord PreviousRecord, float CurrentX, float CurrentY, int ClusterSize);
+record struct ProcessedRecord(string DeviceID, float Lat, float Long, float HAccuracy, long StartTS, long EndTS, float TravelTime, float RoadDistance, float Distance,
+   HighwayType OriginRoadType, HighwayType DestinationRoadType, int NumberOfPings);

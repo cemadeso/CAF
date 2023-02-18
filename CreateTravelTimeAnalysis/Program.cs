@@ -1,5 +1,5 @@
-﻿string recordsPath = args.Length > 0 ? args[0] : @"Z:\Groups\TMG\Research\2022\CAF\Panama\Days\ProcessedRoadTimes-WithTAZ.csv";
-string outputPath = args.Length > 0 ? args[1] : @"Z:\Groups\TMG\Research\2022\CAF\Panama\Days\Distances";
+﻿string recordsPath = args.Length > 0 ? args[0] : @"Z:\Groups\TMG\Research\2022\CAF\Bogota\Days\ProcessedRoadTimes-WithTAZ.csv";
+string outputPath = args.Length > 0 ? args[1] : @"Z:\Groups\TMG\Research\2022\CAF\Bogota\Days\Distances";
 
 //var hourlyOffset = -3; // BuenosAires
 var hourlyOffset = -5; // Bogota + Panama

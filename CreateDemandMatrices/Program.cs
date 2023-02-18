@@ -2,11 +2,11 @@
 using System.Collections;
 using System.Linq;
 
-string recordsPath = args.Length > 0 ? args[0] : @"Z:\Groups\TMG\Research\2022\CAF\Bogota\Days\ProcessedRoadTimes-WithTAZ.csv";
-string outputPath = args.Length > 0 ? args[1] : @"Z:\Groups\TMG\Research\2022\CAF\Bogota\Days\Demand";
+string recordsPath = args.Length > 0 ? args[0] : @"Z:\Groups\TMG\Research\2022\CAF\BuenosAires\Days\ProcessedRoadTimes-WithTAZ.csv";
+string outputPath = args.Length > 0 ? args[1] : @"Z:\Groups\TMG\Research\2022\CAF\BuenosAires\Days\Demand";
 
-//var hourlyOffset = -3; // BuenosAires
-var hourlyOffset = -5; // Bogota + Panama
+var hourlyOffset = -3; // BuenosAires
+//var hourlyOffset = -5; // Bogota + Panama
 
 // Initialize the demand records
 var demandRecords = new Dictionary<(int Origin, int Destination), long[]>[2];
