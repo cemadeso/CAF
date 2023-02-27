@@ -19,7 +19,9 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CreateTravelTimeAnalysis", 
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "AddRoadTimesToSurvey", "AddRoadTimesToSurvey\AddRoadTimesToSurvey.csproj", "{66322B25-8B12-47E4-8ABD-D0EA42CEC702}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CreateTripList", "CreateTripList\CreateTripList.csproj", "{CC7E35C9-439A-4AC1-9C81-063B2D5831CD}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CreateTripList", "CreateTripList\CreateTripList.csproj", "{CC7E35C9-439A-4AC1-9C81-063B2D5831CD}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HomeLocation", "HomeLocation\HomeLocation.csproj", "{9DBA77F2-9B43-4A80-8429-F7DCD80B3357}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -63,6 +65,10 @@ Global
 		{CC7E35C9-439A-4AC1-9C81-063B2D5831CD}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{CC7E35C9-439A-4AC1-9C81-063B2D5831CD}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{CC7E35C9-439A-4AC1-9C81-063B2D5831CD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9DBA77F2-9B43-4A80-8429-F7DCD80B3357}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9DBA77F2-9B43-4A80-8429-F7DCD80B3357}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9DBA77F2-9B43-4A80-8429-F7DCD80B3357}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9DBA77F2-9B43-4A80-8429-F7DCD80B3357}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
