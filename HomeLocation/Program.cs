@@ -17,24 +17,16 @@ High Level Algorithm:
 using HomeLocation;
 using System.Collections.Concurrent;
 
-var processedWithTAZFilePath = @"Z:\Groups\TMG\Research\2022\CAF\Panama\Days\ProcessedRoadTimes-WithTAZ.csv";
-var outputFileLocation = @"Z:\Groups\TMG\Research\2022\CAF\Panama\Days\HomeZone.csv";
+var processedWithTAZFilePath = @"Z:\Groups\TMG\Research\2022\CAF\BuenosAires\Days\ProcessedRoadTimes-WithTAZ.csv";
+const bool ThrowOutTAZNegativeOne = false;
+var outputFileLocation = @"Z:\Groups\TMG\Research\2022\CAF\BuenosAires\Days\HomeZone-" + (ThrowOutTAZNegativeOne ? "ExcludeOutsidePings" : "IncludeOutsidePings") + ".csv";
 
-//const int HourOffset = -3; // BuenosAires
-const int HourOffset = -5; // Bogota + Panama
+const int HourOffset = -3; // BuenosAires
+//const int HourOffset = -5; // Bogota + Panama
 
 // Main Variables
 ConcurrentBag<(string DeviceId, double Lat, double Lon, int stays, int clusters)> completedRecords = new();
 BlockingCollection<DeviceRecords> deviceRecords = new(Environment.ProcessorCount * 2);
-
-
-int TSToHour(long ts)
-{
-    var seconds = DateTime.UnixEpoch + TimeSpan.FromSeconds(ts);
-    var hour = (seconds.Hour + HourOffset) % 24;
-    return hour >= 0 ? hour : hour + 24;
-}
-
 
 // Setup a task to load in the devices from file
 Console.WriteLine("Loading in the records and running DBScan.");
@@ -62,11 +54,12 @@ Task.Run(() =>
                         points = new();
                     }
                 }
+                previousDevice = deviceId;
                 // DeviceId	Lat	Long	hAccuracy	StartTime	EndTime	TravelTime	RoadDistance	Distance	Pings	OriginRoadType	DestinationRoadType	TAZ
                 // 0        1   2       3           4           5       6           7               8           9       10              11                  12
                 int taz = int.Parse(parts[12]);
                 // Ignore stays that are outside of the zone system.
-                if (taz < 0)
+                if (ThrowOutTAZNegativeOne && taz < 0)
                 {
                     continue;
                 }
@@ -76,7 +69,6 @@ Task.Run(() =>
                 long endTime = long.Parse(parts[5]);
                 int pings = int.Parse(parts[9]);
                 points.Add(new Point(lon, lat, pings, IsNightTime(startTime), endTime - startTime));
-                previousDevice = deviceId;
             }
         }
         // deal with the final point
@@ -91,23 +83,27 @@ Task.Run(() =>
     }
 });
 
-bool IsNightTime(long startTime)
-{
-    int hour = TSToHour(startTime);
-    return hour <= 6 || hour >= 19;
-}
-
 // Setup something to go through each processed device and run
 // the DBSCAN algorithm on each device, allowing each one
 // to be generated in parallel
+int numberOfDevices = 0;
+foreach (var device in deviceRecords.GetConsumingEnumerable())
+{
+    numberOfDevices++;
+    var homeLocation = DBSCAN.GetHouseholdZone(device.Points);
+    completedRecords.Add((device.DeviceId, homeLocation.Lat, homeLocation.Lon,
+        device.Points.Count, homeLocation.clusters));
+}
+
+Console.WriteLine("Processed Devices: " + numberOfDevices);
 
 
-Parallel.ForEach(deviceRecords.GetConsumingEnumerable(), (device) =>
+/*Parallel.ForEach(deviceRecords.GetConsumingEnumerable(), (device) =>
 {
     var homeLocation = DBSCAN.GetHouseholdZone(device.Points);
     completedRecords.Add((device.DeviceId, homeLocation.Lat, homeLocation.Lon,
         device.Points.Count, homeLocation.clusters));
-});
+});*/
 
 
 /*foreach (var device in deviceRecords.GetConsumingEnumerable())
@@ -133,6 +129,22 @@ foreach (var (DeviceId, Lat, Lon, Stays, Clusters) in from x in completedRecords
     writer.Write(Stays);
     writer.Write(',');
     writer.WriteLine(Clusters);
+}
+
+
+// Helper functions
+
+bool IsNightTime(long startTime)
+{
+    int hour = TSToHour(startTime);
+    return hour <= 6 || hour >= 19;
+}
+
+int TSToHour(long ts)
+{
+    var seconds = DateTime.UnixEpoch + TimeSpan.FromSeconds(ts);
+    var hour = (seconds.Hour + HourOffset) % 24;
+    return hour >= 0 ? hour : hour + 24;
 }
 
 
