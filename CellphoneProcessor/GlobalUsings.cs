@@ -1,0 +1,11 @@
+﻿global using System;
+global using System.ComponentModel;
+global using System.Collections.Generic;
+global using System.Diagnostics.CodeAnalysis;
+global using System.IO;
+global using System.IO.Compression;
+global using System.Linq;
+global using System.Threading.Tasks;
+global using System.Threading;
+global using System.Collections.ObjectModel;
+global using System.Runtime.CompilerServices;

@@ -8,9 +8,10 @@ Create trip list for cellphone data
     record per trip 
  */
 
-string stayRecordFile = @"Z:\Groups\TMG\Research\2022\CAF\Bogota\Days\ProcessedRoadTimes-WithTAZ.csv";
-string outputFile = @"Z:\Groups\TMG\Research\2022\CAF\Bogota\Days\Trips.csv";
-int hourlyOffset = -5;
+string stayRecordFile = @"Z:\Groups\TMG\Research\2022\CAF\BuenosAires\Days\ProcessedRoadTimes-WithTAZ.csv";
+string outputFile = @"Z:\Groups\TMG\Research\2022\CAF\BuenosAires\Days\Trips.csv";
+var hourlyOffset = -3; // BuenosAires
+//var hourlyOffset = -5; // Bogota + Panama
 
 Time GetTime(long ts)
 {
@@ -19,7 +20,17 @@ Time GetTime(long ts)
     var hour = (time.Hour + hourlyOffset) % 24;
     hour = hour >= 0 ? hour : hour + 24;
     // Assume that we don't have a 30 minute shift for the time zone
-    return new Time() { Hour = (byte)hour, Minute = (byte)time.Minute, Second = (byte)time.Second };
+    return new Time() { Hour = (byte)hour, Minute = (byte)time.Minute, Second = (byte)time.Second, Weekend = IsWeekend(time) };
+}
+
+bool IsWeekend(DateTime time)
+{
+    return time.DayOfWeek switch
+    {
+        DayOfWeek.Sunday => true,
+        DayOfWeek.Saturday => true,
+        _ => false
+    };
 }
 
 IEnumerable<Trip> ReadTrips(string recordsPath)
@@ -27,7 +38,7 @@ IEnumerable<Trip> ReadTrips(string recordsPath)
     using var reader = new StreamReader(recordsPath);
     string? line = reader.ReadLine(); // burn the header
     // Storage for the last stay for each device
-    Dictionary<string, (float Lat, float Lon, long EndTime)> lastStay = new();
+    Dictionary<string, (float Lat, float Lon, long EndTime, int taz)> lastStay = new();
     // writer.WriteLine("DeviceId,Lat,Long,hAccuracy,StartTime,EndTime,TravelTime,RoadDistance,Distance,Pings,OriginRoadType,DestinationRoadType,TAZ");
     while ((line = reader.ReadLine()) is not null)
     {
@@ -42,12 +53,14 @@ IEnumerable<Trip> ReadTrips(string recordsPath)
             int taz = int.Parse(split[12]);
             if (taz >= 0 && lastStay.TryGetValue(device, out var stay))
             {
-                yield return new Trip(device, stay.Lat, stay.Lon, lat, lon, GetTime(stay.EndTime));
+                float roadTime = float.Parse(split[6]);
+                float roadDistance = float.Parse(split[7]);
+                yield return new Trip(device, stay.Lat, stay.Lon, lat, lon, stay.taz, taz, GetTime(stay.EndTime), GetTime(startTime), startTime - stay.EndTime, roadTime, roadDistance);
             }
             // If the record was inside of the zone system, store it
             if (taz >= 0)
             {
-                lastStay[device] = (lat, lon, endTime);
+                lastStay[device] = (lat, lon, endTime, taz);
             }
             else
             {
@@ -60,7 +73,7 @@ IEnumerable<Trip> ReadTrips(string recordsPath)
 }
 
 using var writer = new StreamWriter(outputFile);
-writer.WriteLine("DeviceId,OriginLat,OriginLon,DestinationLat,DestinationLon,TripStartTime");
+writer.WriteLine("DeviceId,OriginLat,OriginLon,DestinationLat,DestinationLon,OriginTaz,DestinationTaz,TripStartTime,TripEndTime,TripDuration,Weekend,Weekday,RoadTime,RoadDistance");
 
 foreach (var record in ReadTrips(stayRecordFile))
 {
@@ -74,7 +87,24 @@ foreach (var record in ReadTrips(stayRecordFile))
     writer.Write(',');
     writer.Write(record.DestinationLon);
     writer.Write(',');
-    writer.WriteLine($"{record.TripTime.Hour:00}:{record.TripTime.Minute:00}:{record.TripTime.Second:00}");
+    writer.Write(record.OriginTaz);
+    writer.Write(',');
+    writer.Write(record.DestinationTaz);
+    writer.Write(',');
+    writer.Write($"{record.TripStartTime.Hour:00}:{record.TripStartTime.Minute:00}:{record.TripStartTime.Second:00}");
+    writer.Write(',');
+    writer.Write($"{record.TripEndTime.Hour:00}:{record.TripEndTime.Minute:00}:{record.TripEndTime.Second:00}");
+    writer.Write(',');
+    writer.Write(record.TripStartTime.Weekend ? '1' : '0');
+    writer.Write(',');
+    writer.Write(record.TripStartTime.Weekend ? '0' : '1');
+    writer.Write(',');
+    // Convert it to hours
+    writer.Write(record.Duration / 3600.0);
+    writer.Write(',');
+    writer.Write(record.RoadTime);
+    writer.Write(',');
+    writer.WriteLine(record.RoadDistance);
 }
 
 struct Time
@@ -82,6 +112,9 @@ struct Time
     public byte Hour;
     public byte Minute;
     public byte Second;
+    public bool Weekend;
 }
 
-record struct Trip(string Device, float OriginLat, float OriginLon, float DestinationLat, float DestinationLon, Time TripTime);
+record struct Trip(string Device, float OriginLat, float OriginLon, float DestinationLat,
+    float DestinationLon, int OriginTaz, int DestinationTaz, Time TripStartTime, Time TripEndTime, long Duration,
+    float RoadTime, float RoadDistance);
