@@ -72,9 +72,9 @@ IEnumerable<Trip> ReadTrips(string recordsPath)
     }
 }
 
+Console.WriteLine("Generating Trips...");
 using var writer = new StreamWriter(outputFile);
-writer.WriteLine("DeviceId,OriginLat,OriginLon,DestinationLat,DestinationLon,OriginTaz,DestinationTaz,TripStartTime,TripEndTime,TripDuration,Weekend,Weekday,RoadTime,RoadDistance");
-
+writer.WriteLine("DeviceId,OriginLat,OriginLon,DestinationLat,DestinationLon,OriginTaz,DestinationTaz,TripStartTime,TripEndTime,Weekend,Weekday,TripDuration,RoadTime,RoadDistance");
 foreach (var record in ReadTrips(stayRecordFile))
 {
     writer.Write(record.Device);
@@ -106,6 +106,8 @@ foreach (var record in ReadTrips(stayRecordFile))
     writer.Write(',');
     writer.WriteLine(record.RoadDistance);
 }
+
+Console.WriteLine("Complete.");
 
 struct Time
 {
