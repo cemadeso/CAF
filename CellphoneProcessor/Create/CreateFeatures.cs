@@ -1,5 +1,4 @@
-﻿using Amazon.S3.Model;
-using CellphoneProcessor.Utilities;
+﻿using CellphoneProcessor.Utilities;
 
 namespace CellphoneProcessor.Create;
 

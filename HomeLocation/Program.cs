@@ -44,7 +44,7 @@ BlockingCollection<DeviceRecords> deviceRecords = new(Environment.ProcessorCount
 // Setup a task to load in the devices from file
 Console.WriteLine("Loading in the records and running DBScan.");
 
-Task.Run(() =>
+var processingTask = Task.Run(() =>
 {
     try
     {
@@ -117,6 +117,8 @@ Parallel.ForEach(deviceRecords.GetConsumingEnumerable(), (device) =>
     completedRecords.Add((device.DeviceId, homeLocation.Lat, homeLocation.Lon,
         GetTaz(homeLocation.Lat, homeLocation.Lon), device.Points.Count, homeLocation.clusters));
 });
+
+processingTask.GetAwaiter().GetResult();
 
 Console.WriteLine("Processed Devices: " + numberOfDevices);
 

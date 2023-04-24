@@ -58,11 +58,21 @@ public sealed class OpenTripPlanner : IDisposable
         // HttpResponseMessage response = await _client.GetAsync($"{_routerPath}?numItineraries=1&&mode=TRANSIT,WALK&&fromPlace={originY},{originX}" +
         //     $"&&toPlace={destinationY},{destinationX}&&maxWalkDistance=1600" +
         //     $"&&date=04-02-2019&&time=1:02pm&&arriveBy=false&&showIntermediateStops=false&&walkReluctance=5&&waitReluctance=1&&minTransferTime=600");
-        HttpResponseMessage response = await _client.GetAsync($"{_routerPath}?fromPlace={originX},{originY}&toPlace={destinationX},{destinationY}&time={startTime}&date={date}&mode=TRANSIT,WALK&maxWalkDistance=1600&arriveBy=false" +
-            $"&numItineraries=1&&showIntermediateStops=false&walkReluctance=5&minTransferTime=600");
-        return response.IsSuccessStatusCode
-            ? ((await response.Content.ReadFromJsonAsync<GetPlanResponse>())?.GetLoS() ?? TransitLoS.GetBadRequest())
-            : TransitLoS.GetBadRequest();
+        var attempts = 100;
+        do
+        {
+            HttpResponseMessage response = await _client.GetAsync($"{_routerPath}?fromPlace={originX},{originY}&toPlace={destinationX},{destinationY}&time={startTime}&date={date}&mode=TRANSIT,WALK&maxWalkDistance=1600&arriveBy=false" +
+                $"&numItineraries=1&&showIntermediateStops=false&walkReluctance=5&minTransferTime=600");
+            if (response.IsSuccessStatusCode)
+            {
+                var plan = await response.Content.ReadFromJsonAsync<GetPlanResponse>();
+                if (plan?.ServerError == false)
+                {
+                    return plan?.GetLoS() ?? TransitLoS.GetBadRequest();
+                }
+            }
+        } while (attempts-- > 0);
+        return TransitLoS.GetBadRequest();
     }
 
     /// <summary>

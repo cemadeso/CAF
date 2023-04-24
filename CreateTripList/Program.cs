@@ -43,31 +43,32 @@ IEnumerable<Trip> ReadTrips(string recordsPath)
     while ((line = reader.ReadLine()) is not null)
     {
         var split = line.Split(',');
-        if (split.Length >= 13)
+        if (split.Length < 13)
         {
-            string device = split[0];
-            float lat = float.Parse(split[1]);
-            float lon = float.Parse(split[2]);
-            long startTime = long.Parse(split[4]);
-            long endTime = long.Parse(split[5]);
-            int taz = int.Parse(split[12]);
-            if (taz >= 0 && lastStay.TryGetValue(device, out var stay))
-            {
-                float roadTime = float.Parse(split[6]);
-                float roadDistance = float.Parse(split[7]);
-                yield return new Trip(device, stay.Lat, stay.Lon, lat, lon, stay.taz, taz, GetTime(stay.EndTime), GetTime(startTime), startTime - stay.EndTime, roadTime, roadDistance);
-            }
-            // If the record was inside of the zone system, store it
-            if (taz >= 0)
-            {
-                lastStay[device] = (lat, lon, endTime, taz);
-            }
-            else
-            {
-                // If the stay is outside of the zone system, drop it and drop the last previous stay
-                // if it exists.
-                lastStay.Remove(device);
-            }
+            continue;
+        }
+        string device = split[0];
+        float lat = float.Parse(split[1]);
+        float lon = float.Parse(split[2]);
+        long startTime = long.Parse(split[4]);
+        long endTime = long.Parse(split[5]);
+        int taz = int.Parse(split[12]);
+        if (taz >= 0 && lastStay.TryGetValue(device, out var stay))
+        {
+            float roadTime = float.Parse(split[6]);
+            float roadDistance = float.Parse(split[7]);
+            yield return new Trip(device, stay.Lat, stay.Lon, lat, lon, stay.taz, taz, GetTime(stay.EndTime), GetTime(startTime), startTime - stay.EndTime, roadTime, roadDistance);
+        }
+        // If the record was inside of the zone system, store it
+        if (taz >= 0)
+        {
+            lastStay[device] = (lat, lon, endTime, taz);
+        }
+        else
+        {
+            // If the stay is outside of the zone system, drop it and drop the last previous stay
+            // if it exists.
+            lastStay.Remove(device);
         }
     }
 }

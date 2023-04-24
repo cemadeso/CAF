@@ -1,24 +1,8 @@
-﻿using CellphoneProcessor.Utilities;
-using NetTopologySuite.IO;
-using NetTopologySuite.Operation.Valid;
-using System.Configuration;
-using System.Windows.Threading;
+﻿namespace CellphoneProcessor.Create;
 
-namespace CellphoneProcessor.Create;
-
-public sealed class CreateFeaturesViewModel : INotifyPropertyChanged
+public sealed class AppendTransitTimesViewModel : INotifyPropertyChanged
 {
-    private double _processedRecords;
-    private double _numberOfRecords;
-    private DateTime _startTime = DateTime.Now;
-    private string _serverName = "http://emme-windows.vaughan.local:8080";
-    public string _otpRouterName = "Current";
-    private string _tripFilePath = @"Z:\Groups\TMG\Research\2022\CAF\Bogota\Days\Trips.csv";
-    private string _outputFilePath = @"Z:\Groups\TMG\Research\2022\CAF\Bogota\Days\Transit.csv";
-    private bool _isRunning = false;
-    private int _otpServerThreads = System.Environment.ProcessorCount * 2;
-
-    public CreateFeaturesViewModel()
+    public AppendTransitTimesViewModel()
     {
 
     }
@@ -46,7 +30,13 @@ public sealed class CreateFeaturesViewModel : INotifyPropertyChanged
         {
             _isRunning = value;
             ValidateInputs();
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ShouldDisable)));
         }
+    }
+
+    public bool ShouldDisable
+    {
+        get => !_isRunning;
     }
 
     public string OTPServerName
@@ -55,11 +45,21 @@ public sealed class CreateFeaturesViewModel : INotifyPropertyChanged
         set
         {
             _serverName = value;
-            InputsUpdated();
+            MandatoryFieldUpdated();
         }
     }
 
-    private void InputsUpdated([CallerMemberName] string? propertyName = null)
+    public DateOnly ServerDate
+    {
+        get => _serverDate;
+        set
+        {
+            _serverDate = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ServerDate)));
+        }
+    }
+
+    private void MandatoryFieldUpdated([CallerMemberName] string? propertyName = null)
     {
         if (propertyName is null)
         {
@@ -75,7 +75,7 @@ public sealed class CreateFeaturesViewModel : INotifyPropertyChanged
         set
         {
             _otpRouterName = value;
-            InputsUpdated();
+            MandatoryFieldUpdated();
         }
     }
 
@@ -85,7 +85,7 @@ public sealed class CreateFeaturesViewModel : INotifyPropertyChanged
         set
         {
             _otpServerThreads = value;
-            InputsUpdated();
+            MandatoryFieldUpdated();
         }
     }
 
@@ -95,7 +95,7 @@ public sealed class CreateFeaturesViewModel : INotifyPropertyChanged
         set
         {
             _tripFilePath = value;
-            InputsUpdated();
+            MandatoryFieldUpdated();
         }
     }
 
@@ -105,7 +105,7 @@ public sealed class CreateFeaturesViewModel : INotifyPropertyChanged
         set
         {
             _outputFilePath = value;
-            InputsUpdated();
+            MandatoryFieldUpdated();
         }
     }
 
@@ -167,7 +167,7 @@ public sealed class CreateFeaturesViewModel : INotifyPropertyChanged
                     NumberOfRecords = update.Total;
                     return;
             }
-        }; 
+        };
         IsRunning = true;
         return CreateFeatures.AppendOTPData(
             _serverName, _tripFilePath, _outputFilePath, _otpServerThreads, update
@@ -177,6 +177,19 @@ public sealed class CreateFeaturesViewModel : INotifyPropertyChanged
             });
 
     }
+
+    #region BackingVariables
+    private double _processedRecords;
+    private double _numberOfRecords;
+    private DateTime _startTime = DateTime.Now;
+    private string _serverName = "http://emme-windows.vaughan.local:8080";
+    public string _otpRouterName = "Current";
+    private string _tripFilePath = @"Z:\Groups\TMG\Research\2022\CAF\Bogota\Days\Trips.csv";
+    private string _outputFilePath = @"Z:\Groups\TMG\Research\2022\CAF\Bogota\Days\Transit.csv";
+    private bool _isRunning = false;
+    private int _otpServerThreads = System.Environment.ProcessorCount * 2;
+    private DateOnly _serverDate = new(2019, 4, 10);
+    #endregion
 
     public event PropertyChangedEventHandler? PropertyChanged;
 }
