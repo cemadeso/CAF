@@ -57,7 +57,7 @@ internal static class DBSCAN
         }
 
         // Find the largest cluster sufficient cluster and compute the average point
-        Span<double> utiltiy = stackalloc double[points.Count];
+        Span<double> utility = stackalloc double[points.Count];
         Span<int> count = stackalloc int[points.Count];
         Span<double> clusterX = stackalloc double[points.Count];
         Span<double> clusterY = stackalloc double[points.Count];
@@ -67,7 +67,7 @@ internal static class DBSCAN
             int clusterIndex = cluster[i] - 1;
             if (clusterIndex < 0) continue;
             // if this point isn't noise then update the cluster
-            utiltiy[clusterIndex] += points[i].NightStart ? 2.0 * points[i].Pings : points[i].Pings;
+            utility[clusterIndex] += points[i].NightStart ? 2.0 * points[i].Pings : points[i].Pings;
             clusterX[clusterIndex] += points[i].Lon;
             clusterY[clusterIndex] += points[i].Lat;
             count[clusterIndex]++;
@@ -76,7 +76,7 @@ internal static class DBSCAN
         int maxUtilityIndex = 0;
         for (int i = 1; i < currentCluster; i++)
         {
-            if (utiltiy[i] > utiltiy[maxUtilityIndex])
+            if (utility[i] > utility[maxUtilityIndex])
             {
                 maxUtilityIndex = i;
             }
